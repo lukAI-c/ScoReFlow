@@ -297,6 +297,17 @@ class TrainPPOAgent(TrainAgent):
         self.cnt_train_step = 0
         self.last_itr_eval = False
         self.done_venv = np.zeros((1,self.n_envs))
+        # 创建专门的训练结果保存文件夹
+        self.results_dir = os.path.join(self.logdir, 'training_results')
+        os.makedirs(self.results_dir, exist_ok=True)
+        # 初始化训练日志文件
+        self.metrics_log_path = os.path.join(self.results_dir, 'training_metrics.txt')
+        self.metrics_csv_path = os.path.join(self.results_dir, 'training_metrics.csv')
+        # 写入 CSV 表头
+        with open(self.metrics_csv_path, 'w') as f:
+            f.write("itr,step,mode,success_rate,avg_episode_reward,avg_best_reward,avg_episode_length,actor_lr,critic_lr,loss,pg_loss,value_loss,entropy_loss,approx_kl,clip_frac\n")
+        log.info(f"Training results folder: {self.results_dir}")
+        log.info(f"Training metrics will be saved to:\n  {self.metrics_log_path}\n  {self.metrics_csv_path}")
     
     def reset_env(self, buffer_device='cpu'):
         # set_seed_everywhere(self.seed)
@@ -572,5 +583,37 @@ class TrainPPOAgent(TrainAgent):
                         step=self.itr,
                         commit=True,
                     )
+            # 保存每次迭代的数据到文本文件和 CSV
+            self._save_metrics_to_file()
             with open(self.result_path, "wb") as f:
                 pickle.dump(self.run_results, f)
+                
+    def _save_metrics_to_file(self):
+        """保存训练指标到文本文件和 CSV 文件"""
+        mode = "eval" if self.eval_mode else "train"
+        
+        # 获取损失信息（仅训练模式有）
+        loss_info = ""
+        csv_loss_values = ",,,,"  # loss, pg_loss, value_loss, entropy_loss, approx_kl, clip_frac
+        if not self.eval_mode and hasattr(self, 'train_ret_dict'):
+            loss_info = f"  Loss: {self.train_ret_dict.get('loss', 0):.4e}, PG Loss: {self.train_ret_dict.get('pg loss', 0):.4e}, Value Loss: {self.train_ret_dict.get('value loss', 0):.4e}"
+            csv_loss_values = f"{self.train_ret_dict.get('loss', '')},{self.train_ret_dict.get('pg loss', '')},{self.train_ret_dict.get('value loss', '')},{self.train_ret_dict.get('entropy_loss', '')},{self.train_ret_dict.get('approx kl', '')},{self.train_ret_dict.get('clip_frac', '')}"
+        
+        # 写入文本文件（人类可读格式）
+        with open(self.metrics_log_path, 'a') as f:
+            f.write(f"[{mode.upper()}] Itr {self.itr} | Step {self.cnt_train_step} | "
+                   f"Success Rate: {self.buffer.success_rate*100:.2f}% | "
+                   f"Avg Reward: {self.buffer.avg_episode_reward:.2f} | "
+                   f"Avg Length: {self.buffer.avg_episode_length:.2f} | "
+                   f"Actor LR: {self.actor_optimizer.param_groups[0]['lr']:.2e} | "
+                   f"Critic LR: {self.critic_optimizer.param_groups[0]['lr']:.2e}"
+                   f"{loss_info}\n")
+        
+        # 写入 CSV 文件（便于后续分析和绘图）
+        with open(self.metrics_csv_path, 'a') as f:
+            f.write(f"{self.itr},{self.cnt_train_step},{mode},"
+                   f"{self.buffer.success_rate},{self.buffer.avg_episode_reward},"
+                   f"{self.buffer.avg_best_reward},{self.buffer.avg_episode_length},"
+                   f"{self.actor_optimizer.param_groups[0]['lr']},"
+                   f"{self.critic_optimizer.param_groups[0]['lr']},"
+                   f"{csv_loss_values}\n")

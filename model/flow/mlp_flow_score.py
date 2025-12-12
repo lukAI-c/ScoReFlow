@@ -755,7 +755,7 @@ class VisionFlowMLP(nn.Module):
             x_chain[:, 0] = x_hat
 
         dt = 1.0 / inference_steps
-        steps = torch.linspace(0, 1 - dt, inference_steps, device=device)
+        steps = torch.linspace(0, 1 - dt, inference_steps, device=device) # flow matching 的时间步
 
         for i in range(inference_steps):
             t = steps[i]
@@ -765,6 +765,7 @@ class VisionFlowMLP(nn.Module):
             st = self.compute_score(x_hat, vt, t_batch)
 
             if epsilon_schedule == 'constant':
+                
                 eps_t = epsilon_t
             elif epsilon_schedule == 'linear_decay':
                 eps_t = epsilon_t * (1 - t.item())
