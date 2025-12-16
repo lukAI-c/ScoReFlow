@@ -181,3 +181,6 @@ cfg/robomimic/*.sh
 *.zip
 *.pth
 *.pt
+*.hdf5
+*.npz
+*.gz
