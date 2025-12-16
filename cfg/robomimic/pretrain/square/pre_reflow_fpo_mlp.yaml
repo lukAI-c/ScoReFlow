@@ -1,0 +1,107 @@
+######################################################################
+# Pretrain ReFlow MLP 配置 - Square 任务 (用于 FPO 微调)
+#
+# 此配置用于预训练一个 Flow 策略，该策略将作为 FPO 微调的基础模型
+# 使用 robomimic square (NutAssemblySquare) 任务数据集
+######################################################################
+env_suite: robomimic
+env: square
+
+# 动作空间配置 (Panda 机械臂: 6DoF + gripper)
+action_dim: 7
+horizon_steps: 4           # 预测未来动作的步数
+
+# 观测空间配置
+# square 任务 lowdim 观测: robot0_eef_pos(3) + robot0_eef_quat(4) + robot0_gripper_qpos(2) + object(14) = 23
+obs_dim: 23
+cond_steps: 1              # 条件历史步数
+
+# 观测数据 key
+shape_meta:
+  obs:
+    state:
+      shape: [23]
+  action: 
+    shape: [7]
+###################################################################
+
+defaults:
+  - _self_
+hydra:
+  run:
+    dir: ${logdir}
+
+# 使用标准 ReFlow 预训练 Agent
+_target_: agent.pretrain.train_reflow_agent.TrainReFlowAgent
+name: ${env}_pre_reflow_fpo_mlp_ta${horizon_steps}_td${denoising_steps}_seed${seed}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/${env}/ReFlow_FPO/${now:%Y-%m-%d}_${now:%H-%M-%S}_${seed}
+train_dataset_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/${env}/train.npz
+normalization_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/${env}/normalization.npz
+
+seed: 42
+device: cuda:0
+
+# Flow 采样步数（预训练时使用较多步数确保质量）
+denoising_steps: 20
+
+# 批量大小
+batch_size: 256
+
+# WandB 配置
+wandb:
+  entity: ${oc.env:REINFLOW_WANDB_ENTITY}
+  project: robomimic-${env}-pretrain-fpo
+  run: ${now:%Y-%m-%d}_${now:%H-%M-%S}_${name}
+  offline_mode: false
+
+# 训练配置
+train:
+  n_epochs: 2000            # 训练轮数
+  batch_size: ${batch_size}
+  learning_rate: 1e-4       # 学习率
+  weight_decay: 1e-6        # 权重衰减
+  lr_scheduler:
+    first_cycle_steps: 2000 # 学习率周期
+    warmup_steps: 100       # 预热步数
+    min_lr: 1e-5            # 最小学习率
+  epoch_start_ema: 20       # 开始 EMA 更新的 epoch
+  update_ema_freq: 10       # EMA 更新频率
+  save_model_freq: 500      # 保存模型频率
+  log_freq: 100             # 日志频率
+
+# 模型配置
+model:
+  _target_: model.flow.reflow.ReFlow
+  network:
+    _target_: model.flow.mlp_flow.FlowMLP
+    horizon_steps: ${horizon_steps}
+    action_dim: ${action_dim}
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+    time_dim: 32
+    mlp_dims: [512, 512, 512]     # 网络隐层维度
+    activation_type: Mish
+    out_activation_type: Identity
+    use_layernorm: False
+    residual_style: True
+  device: ${device}
+  horizon_steps: ${horizon_steps}
+  action_dim: ${action_dim}
+  act_min: -1
+  act_max: 1 
+  obs_dim: ${obs_dim}
+  max_denoising_steps: ${denoising_steps}
+  seed: ${seed}
+  sample_t_type: uniform         # 时间采样类型: uniform, beta, logitnormal
+
+# EMA 配置
+ema:
+  decay: 0.995                   # EMA 衰减系数
+
+# 训练数据集配置
+train_dataset:
+  _target_: agent.dataset.sequence.StitchedSequenceDataset
+  dataset_path: ${train_dataset_path}
+  horizon_steps: ${horizon_steps}
+  cond_steps: ${cond_steps}
+  device: ${device}
+  max_n_episodes: -1             # -1 表示使用所有 episode
