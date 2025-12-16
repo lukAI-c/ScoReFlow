@@ -67,11 +67,105 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
         self.average_losses_before_exp = cfg.train.get("average_losses_before_exp", True)
         self.buffer_on_gpu = cfg.train.get("buffer_on_gpu", False)
 
+        # 图像观测配置
+        self.use_image_obs = cfg.env.get('use_image_obs', False)
+
         # 模型类型检查
         self.model: PPOFlowFPO
-
+        self.options_venv = [{"timestep": 0} for _ in range(self.n_envs)]
+        
         log.info(f"FPO Agent initialized with n_samples_per_action={self.n_samples_per_action}")
+        log.info(f"Image observation mode: {self.use_image_obs}")
+    
+    def _process_obs(self, obs):
+        """
+        处理观测格式，确保键名符合模型期望
+        
+        robomimic_image wrapper 返回的观测键名可能是:
+        - 'agentview_image': 图像观测
+        - 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos': 低维状态
+        
+        模型（ViTCritic）期望的键名是:
+        - 'rgb': 图像观测
+        - 'state': 合并后的低维状态
+        
+        Args:
+            obs: 原始观测，可能是字典或 numpy 数组
+            
+        Returns:
+            处理后的观测字典，键名为 'rgb' 和 'state'
+        """
+        if not isinstance(obs, dict):
+            return obs
+        
+        if not self.use_image_obs:
+            # 如果不使用图像观测，直接返回
+            return obs
+        
+        # 处理图像观测：重命名键
+        processed_obs = {}
+        
+        # 处理图像键
+        if 'agentview_image' in obs:
+            processed_obs['rgb'] = obs['agentview_image']
+        elif 'rgb' in obs:
+            processed_obs['rgb'] = obs['rgb']
+        else:
+            raise KeyError(f"No image key found in observation. Available keys: {list(obs.keys())}")
+        
+        # 处理状态键：合并多个 lowdim 键
+        state_keys = ['robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
+        
+        if any(k in obs for k in state_keys):
+            # 合并所有存在的状态键
+            state_parts = [obs[k] for k in state_keys if k in obs]
+            if state_parts:
+                processed_obs['state'] = np.concatenate(state_parts, axis=-1)
+        elif 'state' in obs:
+            # 如果已经有合并好的 state 键
+            processed_obs['state'] = obs['state']
+        else:
+            raise KeyError(f"No state keys found in observation. Available keys: {list(obs.keys())}")
+        
+        return processed_obs
+    
+    def reset_env_all(self, options_venv=None, verbose=False, **kwargs):
+        """
+        FPO 版本的 reset_env_all，处理返回格式兼容性问题
+        
+        覆盖父类方法以确保返回格式符合底层 async_vector_env 的预期
+        """
+        if options_venv is None:
+            options_venv = self.options_venv
 
+        # 调用底层 reset_arg
+        results = self.venv.reset_arg(options_list=options_venv)
+        
+        # 处理返回值格式
+        # gym 环境的 reset 可能返回 (obs, info) 或直接返回 obs
+        if isinstance(results, tuple) and len(results) == 2:
+            obs_venv, infos = results
+        else:
+            obs_venv = results
+            infos = None
+        
+        # 如果 obs_venv 是列表且元素是元组，解包
+        if isinstance(obs_venv, list) and len(obs_venv) > 0:
+            if isinstance(obs_venv[0], tuple):
+                obs_venv = [obs[0] for obs in obs_venv]
+            
+            # 转换为字典格式（stack 各个环境的观测）
+            if isinstance(obs_venv[0], dict):
+                obs_venv = {
+                    key: np.stack([obs[key] for obs in obs_venv])
+                    for key in obs_venv[0].keys()
+                }
+        
+        if verbose:
+            for index in range(self.n_envs):
+                log.info(f"<-- Reset environment {index} with options {options_venv[index]}")
+        
+        return obs_venv
     def init_buffer(self):
         """初始化 FPO 专用 Buffer（覆盖父类方法）"""
         buffer_cls = PPOFlowFPOBufferGPU if self.buffer_on_gpu else PPOFlowFPOBuffer
@@ -122,13 +216,32 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
             # FPO 风格的轨迹收集
             for step in range(self.n_steps):
                 with torch.no_grad():
-                    cond = {
-                        "state": torch.tensor(
-                            self.prev_obs_venv["state"],
-                            device=self.device,
-                            dtype=torch.float32
-                        )
-                    }
+                    # 处理观测格式
+                    processed_obs = self._process_obs(self.prev_obs_venv)
+                    
+                    # 构建条件输入
+                    if self.use_image_obs:
+                        cond = {
+                            "rgb": torch.tensor(
+                                processed_obs["rgb"],
+                                device=self.device,
+                                dtype=torch.float32
+                            ),
+                            "state": torch.tensor(
+                                processed_obs["state"],
+                                device=self.device,
+                                dtype=torch.float32
+                            )
+                        }
+                    else:
+                        cond = {
+                            "state": torch.tensor(
+                                processed_obs["state"],
+                                device=self.device,
+                                dtype=torch.float32
+                            )
+                        }
+                    
                     value_venv = self.get_value(cond=cond)
 
                     # FPO 采样：返回 (action, FPOActionInfo)
@@ -144,10 +257,11 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
                     action_venv.cpu().numpy() if isinstance(action_venv, torch.Tensor) else action_venv
                 )
 
-                # 存储到 FPO buffer
+                # 存储到 FPO buffer（使用处理后的观测）
+                processed_prev_obs = self._process_obs(self.prev_obs_venv)
                 self.buffer.add(
                     step=step,
-                    state_venv=self.prev_obs_venv["state"],
+                    state_venv=processed_prev_obs["state"],
                     action_venv=action.cpu().numpy() if isinstance(action, torch.Tensor) else action,
                     loss_eps_venv=action_info.loss_eps.cpu().numpy(),
                     loss_t_venv=action_info.loss_t.cpu().numpy(),
@@ -336,7 +450,7 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
         # 定期保存中间模型
         if self.itr % self.save_model_freq == 0 or self.itr == self.n_train_itr - 1:
             save_path = os.path.join(self.checkpoint_dir, f"state_{self.itr}.pt")
-            torch.save(data, save_path)
+            torch.save(data, os.path.join(self.checkpoint_dir, save_path))
             log.info(f"\n Saved model at itr={self.itr} to {save_path}\n ")
 
         # 保存最佳模型

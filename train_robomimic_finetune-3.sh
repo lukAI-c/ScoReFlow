@@ -35,8 +35,8 @@ export PYOPENGL_PLATFORM="osmesa"
 # 2. 运行 Python
 python script/run.py \
     --config-dir=cfg/robomimic/finetune/square \
-    --config-name=ft_ppo_reflow_mlp_img \
-    base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/square_pre_reflow_mlp_img_ta4_td100/2025-12-10_08-22-54_42/checkpoint/last.pt\
+    --config-name=ft_fpo_reflow_mlp_img \
+    base_policy_path=null\
     device=cuda:0 \
     sim_device=null \
     wandb.offline_mode=true \

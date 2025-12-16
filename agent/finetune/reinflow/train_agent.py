@@ -187,6 +187,9 @@ class TrainAgent:
             ]
         obs_venv = self.venv.reset_arg(options_list=options_venv)
         # convert to OrderedDict if obs_venv is a list of dict
+        
+        # if isinstance(obs_venv, tuple):
+        #     obs_venv = obs_venv[0]
         if isinstance(obs_venv, list):
             obs_venv = {
                 key: np.stack([obs_venv[i][key] for i in range(self.n_envs)])
