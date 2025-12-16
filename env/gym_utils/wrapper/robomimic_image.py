@@ -176,6 +176,20 @@ class RobomimicImageWrapper(gym.Env):
             action = self.unnormalize_action(action)
         raw_obs, reward, done, info = self.env.step(action)
         obs = self.get_observation(raw_obs)
+        
+        
+        # Debug logging for reward and observation
+        if hasattr(self, 'step_count'):
+            self.step_count += 1
+        else:
+            self.step_count = 1
+            
+        if self.step_count % 100 == 0:
+            rgb_mean = np.mean(obs["rgb"])
+            rgb_std = np.std(obs["rgb"])
+            print(f"[RobomimicImageWrapper] Step: {self.step_count}, Reward: {reward}, Done: {done}, RGB Mean: {rgb_mean:.4f}, RGB Std: {rgb_std:.4f}")
+            if rgb_mean == 0 and rgb_std == 0:
+                print("[RobomimicImageWrapper] WARNING: RGB observation is completely black!")
 
         # render if specified
         if self.video_writer is not None:

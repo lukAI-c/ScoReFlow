@@ -33,9 +33,10 @@ from collections import namedtuple
 from typing import Tuple
 from torch.distributions.normal import Normal
 from model.flow.mlp_flow_score import FlowMLP
+from model.flow.score_utils import ScoreFunctionMixin
 Sample = namedtuple("Sample", "trajectories chains")
 
-class PPOFlow(nn.Module):
+class PPOFlow(nn.Module, ScoreFunctionMixin):
     
     """
     PPO with Flow Matching Policy using score-based stochastic sampling.
@@ -75,7 +76,7 @@ class PPOFlow(nn.Module):
                  logprob_debug_sample,
                  logprob_debug_recalculate,
                  epsilon_schedule='constant',   # epsilon schedule: 'constant', 'linear_decay', 'cosine'
-                 lamda = 10,
+                 lamda = 10, # default: 1
                  ):
         
         super().__init__()
@@ -149,71 +150,71 @@ class PPOFlow(nn.Module):
     #                                 )
     
     
-    def get_epsilon_at_time(self, t: float, training_progress: float = 0.0) -> float:
-        """
-        根据时间步 t 和训练进度计算 epsilon 值。
+    # def get_epsilon_at_time(self, t: float, training_progress: float = 0.0) -> float:
+    #     """
+    #     根据时间步 t 和训练进度计算 epsilon 值。
 
-        支持的调度类型:
-            - 'constant': 固定噪声系数 εt = ε₀
-            - 'linear_decay': 线性衰减 εt = ε₀ × (1 - t)
-            - 'cosine': 余弦衰减 εt = ε₀ × 0.5 × (1 + cos(πt))
-            - 'sqrt_decay': 平方根衰减 εt = ε₀ × √(1 - t)
-            - 'exponential_decay': 指数衰减 εt = ε₀ × exp(-λt)
-            - 'warmup_decay': 先增后减 εt = ε₀ × sin(πt)
-            - 'quadratic_decay': 二次衰减 εt = ε₀ × (1 - t)²
-            - 'inverse_sqrt': 反平方根 εt = ε₀ / √(1 + t)
-            - 'adaptive': 使用可学习的 epsilon
-            - 'training_decay': 随训练进度衰减
+    #     支持的调度类型:
+    #         - 'constant': 固定噪声系数 εt = ε₀
+    #         - 'linear_decay': 线性衰减 εt = ε₀ × (1 - t)
+    #         - 'cosine': 余弦衰减 εt = ε₀ × 0.5 × (1 + cos(πt))
+    #         - 'sqrt_decay': 平方根衰减 εt = ε₀ × √(1 - t)
+    #         - 'exponential_decay': 指数衰减 εt = ε₀ × exp(-λt)
+    #         - 'warmup_decay': 先增后减 εt = ε₀ × sin(πt)
+    #         - 'quadratic_decay': 二次衰减 εt = ε₀ × (1 - t)²
+    #         - 'inverse_sqrt': 反平方根 εt = ε₀ / √(1 + t)
+    #         - 'adaptive': 使用可学习的 epsilon
+    #         - 'training_decay': 随训练进度衰减
 
-        Args:
-            t: 当前时间步 (0 到 1)
-            training_progress: 训练进度 (0 到 1)，用于某些调度策略
+    #     Args:
+    #         t: 当前时间步 (0 到 1)
+    #         training_progress: 训练进度 (0 到 1)，用于某些调度策略
 
-        Returns:
-            epsilon_t: 当前的噪声系数
-        """
-        import math
-        eps_0 = self.epsilon_t
-        eps_min = getattr(self, 'epsilon_min', 0.01)  # 默认值 0.001
+    #     Returns:
+    #         epsilon_t: 当前的噪声系数
+    #     """
+    #     import math
+    #     eps_0 = self.epsilon_t
+    #     eps_min = getattr(self, 'epsilon_min', 0.01)  # 默认值 0.001
 
-        if self.epsilon_schedule == 'constant':
-            return eps_0
-        elif self.epsilon_schedule == 'linear_decay':
-            # εt = ε₀ * (1 - t)
-            return max(eps_min, eps_0 * (1 - t))
-        elif self.epsilon_schedule == 'cosine':
-            # εt = ε₀ * 0.5 * (1 + cos(πt))
-            return max(eps_min, eps_0 * 0.5 * (1 + math.cos(math.pi * t)))
-        elif self.epsilon_schedule == 'sqrt_decay':
-            # εt = ε₀ * sqrt(1 - t)
-            return max(eps_min, eps_0 * math.sqrt(max(0, 1 - t)))
-        elif self.epsilon_schedule == 'exponential_decay':
-            # εt = ε₀ * exp(-λt)
-            decay_rate = getattr(self, 'epsilon_decay_rate', 2.0)  # 默认值 2.0
-            return max(eps_min, eps_0 * math.exp(-decay_rate * t))
-        elif self.epsilon_schedule == 'warmup_decay':
-            # εt = ε₀ * sin(πt) - 先增后减，t=0.5时最大
-            return max(eps_min, eps_0 * math.sin(math.pi * t))
-        elif self.epsilon_schedule == 'quadratic_decay':
-            # εt = ε₀ * (1 - t)² - 比线性更快衰减
-            return max(eps_min, eps_0 * (1 - t) ** 2)
-        elif self.epsilon_schedule == 'inverse_sqrt':
-            # εt = ε₀ / sqrt(1 + t) - 缓慢衰减
-            return max(eps_min, eps_0 / math.sqrt(1 + t))
-        elif self.epsilon_schedule == 'adaptive':
-            # 使用可学习的 epsilon
-            adaptive_eps = getattr(self, 'adaptive_epsilon', None)
-            if adaptive_eps is not None:
-                return max(eps_min, adaptive_eps.item())
-            else:
-                return eps_0  # fallback to constant
-        elif self.epsilon_schedule == 'training_decay':
-            # 随训练进度衰减: εt = ε₀ × (1 - 0.5×progress) × (1 - t)
-            decay_factor = 1 - 0.5 * training_progress
-            return max(eps_min, eps_0 * decay_factor * (1 - t))
-        else:
-            log.warning(f"Unknown epsilon_schedule: {self.epsilon_schedule}, using constant")
-            return eps_0
+    #     if self.epsilon_schedule == 'constant':
+    #         return eps_0
+    #     elif self.epsilon_schedule == 'linear_decay':
+    #         # εt = ε₀ * (1 - t)
+    #         return max(eps_min, eps_0 * (1 - t))
+    #     elif self.epsilon_schedule == 'cosine':
+    #         # εt = ε₀ * 0.5 * (1 + cos(πt))
+    #         return max(eps_min, eps_0 * 0.5 * (1 + math.cos(math.pi * t)))
+    #     elif self.epsilon_schedule == 'sqrt_decay':
+    #         # εt = ε₀ * sqrt(1 - t)
+    #         return max(eps_min, eps_0 * math.sqrt(max(0, 1 - t)))
+    #     elif self.epsilon_schedule == 'exponential_decay':
+    #         # εt = ε₀ * exp(-λt)
+    #         decay_rate = getattr(self, 'epsilon_decay_rate', 2.0)  # 默认值 2.0
+    #         return max(eps_min, eps_0 * math.exp(-decay_rate * t))
+    #     elif self.epsilon_schedule == 'warmup_decay':
+    #         # εt = ε₀ * sin(πt) - 先增后减，t=0.5时最大
+    #         return max(eps_min, eps_0 * math.sin(math.pi * t))
+    #     elif self.epsilon_schedule == 'quadratic_decay':
+    #         # εt = ε₀ * (1 - t)² - 比线性更快衰减
+    #         return max(eps_min, eps_0 * (1 - t) ** 2)
+    #     elif self.epsilon_schedule == 'inverse_sqrt':
+    #         # εt = ε₀ / sqrt(1 + t) - 缓慢衰减
+    #         return max(eps_min, eps_0 / math.sqrt(1 + t))
+    #     elif self.epsilon_schedule == 'adaptive':
+    #         # 使用可学习的 epsilon
+    #         adaptive_eps = getattr(self, 'adaptive_epsilon', None)
+    #         if adaptive_eps is not None:
+    #             return max(eps_min, adaptive_eps.item())
+    #         else:
+    #             return eps_0  # fallback to constant
+    #     elif self.epsilon_schedule == 'training_decay':
+    #         # 随训练进度衰减: εt = ε₀ × (1 - 0.5×progress) × (1 - t)
+    #         decay_factor = 1 - 0.5 * training_progress
+    #         return max(eps_min, eps_0 * decay_factor * (1 - t))
+    #     else:
+    #         log.warning(f"Unknown epsilon_schedule: {self.epsilon_schedule}, using constant")
+    #         return eps_0
 
     
     def check_gradient_flow(self):
@@ -267,6 +268,7 @@ class PPOFlow(nn.Module):
                      normalize_act_space_dimension=False,
                      clip_intermediate_actions=True,
                      verbose_entropy_stats=True,
+                     debug=True,
                      account_for_initial_stochasticity=False,
                      get_chains_stds=True
                      ):
@@ -472,27 +474,27 @@ class PPOFlow(nn.Module):
             # lamda = 0.125
             # drift = (vt + lamda * eps_t * st) * dt
             
-            # 更全面的统计信息
-            print("vt: mean={:.3f}, std={:.3f}, abs_mean={:.3f}".format(
-                vt.mean().item(), vt.std().item(), vt.abs().mean().item()))
-            print("st: mean={:.3f}, std={:.3f}, abs_mean={:.3f}".format(
-                st.mean().item(), st.std().item(), st.abs().mean().item()))
-            print("eps_t: {:.3f}".format(eps_t))
+            # print 更全面的统计信息
+            # print("vt: mean={:.3f}, std={:.3f}, abs_mean={:.3f}".format(
+            #     vt.mean().item(), vt.std().item(), vt.abs().mean().item()))
+            # print("st: mean={:.3f}, std={:.3f}, abs_mean={:.3f}".format(
+            #     st.mean().item(), st.std().item(), st.abs().mean().item()))
+            # print("eps_t: {:.3f}".format(eps_t))
 
             # 相对贡献比例
             vt_norm = vt[0].norm().item()
             st_norm = st[0].norm().item()
             ratio_00 = (eps_t * st_norm) / (vt_norm + 1e-8)  # 避免除零
-            print("vt_norm: {:.3f}, st_norm: {:.3f}, st/vt ratio: {:.3f}".format(
-                vt_norm, st_norm, ratio_00))
+            # print("vt_norm: {:.3f}, st_norm: {:.3f}, st/vt ratio: {:.3f}".format(
+            #     vt_norm, st_norm, ratio_00))
 
             # 更新量统计
             drift = vt + eps_t * st
-            print("drift_norm: {:.3f}, vt_contrib: {:.3f}, st_contrib: {:.3f}".format(
-            drift.norm().item(),
-            vt_norm / (drift[0].norm().item() + 1e-8),
-            (eps_t * st_norm) / (drift[0].norm().item() + 1e-8)))
-            print("----------------------------------------")
+            # print("drift_norm: {:.3f}, vt_contrib: {:.3f}, st_contrib: {:.3f}".format(
+            # drift.norm().item(),
+            # vt_norm / (drift[0].norm().item() + 1e-8),
+            # (eps_t * st_norm) / (drift[0].norm().item() + 1e-8)))
+            # print("----------------------------------------")
             # Diffusion std: √(2εt·Δt)
             diffusion_std = np.sqrt(2 * eps_t * dt)
             # 5. Update: ak+1 = ak + drift + diffusion * noise

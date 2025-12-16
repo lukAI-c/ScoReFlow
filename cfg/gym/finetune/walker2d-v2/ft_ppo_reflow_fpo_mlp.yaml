@@ -1,0 +1,150 @@
+######################################################################
+# FPO (Flow Policy Optimization) 版本的 walker2d-v2 配置
+# 核心区别: 使用 CFM 损失变化计算策略比率，而非显式似然
+######################################################################
+env_name: walker2d-medium-v2
+# future action forecasts
+action_dim: 6
+horizon_steps: 4
+act_steps: 4 # agent一次性预测动作的步数
+# observation history
+obs_dim: 17
+cond_steps: 1
+######################################################################
+defaults:
+  - _self_
+hydra:
+  run:
+    dir: ${logdir}
+
+# 使用 FPO 版本的训练脚本
+_target_: agent.finetune.reinflow.train_ppo_flow_fpo_agent.TrainPPOFlowFPOAgent
+name: ${env_name}_ppo_reflow_fpo_mlp_ta${horizon_steps}_td${denoising_steps}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_fpo_mlp_ta${horizon_steps}_td${denoising_steps}/${now:%Y-%m-%d}_${now:%H-%M-%S}_seed${seed}
+# base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/gym/pretrain/walker2d-v2/ReFlow/2025-02-06_01-39-14_D4RL/checkpoint/state_80.pt
+base_policy_path: null
+normalization_path: ${oc.env:REINFLOW_DATA_DIR}/gym/${env_name}/normalization.npz
+resume_path: null
+seed: 42
+device: cuda:0
+sim_device: cuda:0
+
+#########################
+# Flow 采样步数
+denoising_steps: 10
+ft_denoising_steps: 10
+#########################
+
+env:
+  n_envs: 40
+  name: ${env_name}
+  max_episode_steps: 1000
+  reset_at_iteration: false
+  save_video: false
+  best_reward_threshold_for_success: 3
+  wrappers:
+    mujoco_locomotion_lowdim:
+      normalization_path: ${normalization_path}
+    multi_step:
+      n_obs_steps: ${cond_steps}
+      n_action_steps: ${act_steps}
+      max_episode_steps: ${env.max_episode_steps}
+      reset_within_step: true
+
+wandb:
+  entity: ${oc.env:REINFLOW_WANDB_ENTITY}
+  project: gym-${env_name}-finetune-fpo
+  run: ${now:%Y-%m-%d}_${now:%H-%M-%S}_${name}
+  offline_mode: false
+
+train:
+  n_train_itr: 1001
+  n_critic_warmup_itr: 5
+  n_steps: 500
+  gamma: 0.99
+  actor_lr: 0.00001 # 0.0004
+  actor_weight_decay: 0
+  actor_lr_scheduler:
+    type: cosine
+    first_cycle_steps: 100
+    warmup_steps: 20
+  #   min_lr: 0.0004
+  # critic_lr: 0.004
+    min_lr: 0.00001
+  critic_lr: 0.0005
+  critic_weight_decay: 1.0e-05
+  critic_lr_scheduler:
+    type: cosine
+    first_cycle_steps: 100
+    warmup_steps: 10
+    min_lr: 0.001 # 0.004
+  save_model_freq: 300
+  val_freq: 10
+  render:
+    freq: 1
+    num: 0
+  # PPO 参数
+  reward_scale_running: true
+  reward_scale_const: 1.0
+  gae_lambda: 0.95
+  batch_size: 50000
+  update_epochs: 5
+  vf_coef: 0.5
+  target_kl: 0.02
+  lr_schedule: fixed
+  max_grad_norm: 0.5
+  # FPO 特定参数
+  n_samples_per_action: 8        # CFM 损失采样数
+  average_losses_before_exp: true # 先平均损失再取指数（更稳定）
+  clip_intermediate_actions: true
+  buffer_on_gpu: true             # 使用 GPU buffer 加速
+  # BC 正则化（可选）
+  use_bc_loss: false
+  bc_coeff: 0.1
+
+# 使用 FPO 版本的模型
+model:
+  _target_: model.flow.ft_ppo.ppoflow_fpo.PPOFlowFPO
+  device: ${device}
+  actor_policy_path: ${base_policy_path}
+
+  # 策略网络（与原始配置相同）
+  policy:
+    _target_: model.flow.mlp_flow.FlowMLP
+    horizon_steps: ${horizon_steps}
+    action_dim: ${action_dim}
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+    time_dim: 16
+    mlp_dims: [512, 512, 512]
+    activation_type: ReLU
+    out_activation_type: Identity
+    use_layernorm: false
+    residual_style: true
+
+  # Critic 网络（与原始配置相同）
+  critic:
+    _target_: model.common.critic.CriticObs
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+    mlp_dims: [256, 256, 256]
+    activation_type: Mish
+    residual_style: true
+
+  # 动作空间配置（只保留 PPOFlowFPO.__init__ 中定义的参数）
+  act_dim: ${action_dim}
+  horizon_steps: ${horizon_steps}
+  act_min: -1
+  act_max: 1
+  obs_dim: ${obs_dim}
+  cond_steps: ${cond_steps}
+
+  # Flow 采样配置
+  inference_steps: ${denoising_steps}
+  denoised_clip_value: 1.0
+
+  # FPO 特定参数
+  n_samples_per_action: ${train.n_samples_per_action}
+  clipping_epsilon: 0.2          # PPO clip 参数
+  clip_vloss_coef: 0.0           # 不使用价值裁剪
+  average_losses_before_exp: ${train.average_losses_before_exp}
+  use_ema: true
+

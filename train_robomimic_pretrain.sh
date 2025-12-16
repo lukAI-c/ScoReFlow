@@ -11,7 +11,8 @@ echo "Starting Robomimic Pre-training..."
 
 python script/run.py \
     --config-dir=cfg/robomimic/pretrain/square \
-    --config-name=pre_reflow_mlp_img \
+    --config-name=pre_reflow_score_mlp_img \
+    wandb.offline_mode=true \
     device=cuda:0 \
 
 echo "Pre-training finished."

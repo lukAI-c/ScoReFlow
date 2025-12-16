@@ -30,10 +30,10 @@ from tqdm import tqdm as tqdm
 import torch
 import logging
 log = logging.getLogger(__name__)
-from agent.finetune.reinflow.train_ppo_flow_agent import TrainPPOFlowAgent
+from agent.finetune.reinflow.train_ppo_flow_agent_score import TrainPPOFlowAgent
 from model.common.modules import RandomShiftsAug
 import numpy as np
-from model.flow.ft_ppo.ppoflow import PPOFlow
+from model.flow.ft_ppo.ppoflow_score import PPOFlow
 from agent.finetune.reinflow.buffer import PPOFlowImgBuffer, PPOFlowImgBufferGPU
 
 class TrainPPOImgFlowAgent(TrainPPOFlowAgent):
@@ -61,7 +61,7 @@ class TrainPPOImgFlowAgent(TrainPPOFlowAgent):
 
         self.skip_initial_eval =False
         
-        self.use_early_stop = True
+        self.use_early_stop = False # True
         
         self.fix_nextvalue_augment_bug=True #False
         
@@ -305,8 +305,6 @@ class TrainPPOImgFlowAgent(TrainPPOFlowAgent):
                 "critic_norm": critic_norm,
                 "actor lr": self.actor_optimizer.param_groups[0]["lr"],
                 "critic lr": self.critic_optimizer.param_groups[0]["lr"],
-                "min_logprob_noise_std": self.model.min_logprob_denoising_std,
-                "min_sampling_noise_std": self.model.min_sampling_denoising_std,
                 "noise_std": noise_stds,
                 "Q_values": self.Q_values   # # define Q values as the old Q values to align with the definition in diffusion ppo. you can change those back to new Q values but also remember to re-define Q values in agent/finetune/reinflow/train_ppo_diffusion_img_agent.py
             }
