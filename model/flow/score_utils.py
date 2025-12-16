@@ -141,6 +141,10 @@ class ScoreFunction:
         Returns:
             epsilon_t: epsilon at current time step
         """
+        # 限幅
+        if t > 0.95:
+            return 0.0
+        
         if schedule == 'constant':
             return epsilon_0
         elif schedule == 'linear_decay':

@@ -70,8 +70,8 @@ class ReFlowScore(nn.Module, ScoreFunctionMixin):
         seed: int,
         sample_t_type: str = 'uniform',
         epsilon_t: float = 0.1,
-        epsilon_schedule: str = 'cosine',
-        lamda: float = 10.0, # defalut 1.0
+        epsilon_schedule: str = 'linear_decay',
+        lamda: float = 1.0, # defalut 1.0
         randn_clip_value: float = 3.0, # defalut 3.0
     ):
         """

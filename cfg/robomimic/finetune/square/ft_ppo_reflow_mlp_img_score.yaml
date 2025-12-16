@@ -34,7 +34,7 @@ denoising_steps: 1
 # max_std: 0.14
 # Score-based exploration parameters
 epsilon_t: 0.2
-epsilon_schedule: cosine  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
+epsilon_schedule: linear_decay  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
 ###################################
 
 env:
