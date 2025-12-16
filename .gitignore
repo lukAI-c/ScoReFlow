@@ -184,3 +184,4 @@ cfg/robomimic/*.sh
 *.hdf5
 *.npz
 *.gz
+reinflow.tar.gz
