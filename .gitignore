@@ -178,3 +178,6 @@ cfg/robomimic/*.sh
 
 # 视频文件
 *.mp4
+*.zip
+*.pth
+*.pt
