@@ -29,7 +29,7 @@ sim_device: cuda:0
 denoising_steps: 4
 # Score-based exploration parameters
 epsilon_t: 0.2
-epsilon_schedule: cosine  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
+epsilon_schedule: linear_decay  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
 env:
   n_envs: 40
   name: ${env_name}

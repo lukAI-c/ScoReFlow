@@ -70,12 +70,20 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
         # 图像观测配置
         self.use_image_obs = cfg.env.get('use_image_obs', False)
 
+        # 设置观测维度（图像模式下使用字典）
+        if self.use_image_obs:
+            shape_meta = cfg.shape_meta
+            self.obs_dims = {k: shape_meta.obs[k]["shape"] for k in shape_meta.obs}
+            log.info(f"Image observation mode enabled. obs_dims={self.obs_dims}")
+        else:
+            # 非图像模式，obs_dim 已经在父类中设置
+            log.info(f"State-only observation mode. obs_dim={self.obs_dim}")
+
         # 模型类型检查
         self.model: PPOFlowFPO
         self.options_venv = [{"timestep": 0} for _ in range(self.n_envs)]
-        
+
         log.info(f"FPO Agent initialized with n_samples_per_action={self.n_samples_per_action}")
-        log.info(f"Image observation mode: {self.use_image_obs}")
     
     def _process_obs(self, obs):
         """
@@ -170,6 +178,9 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
         """初始化 FPO 专用 Buffer（覆盖父类方法）"""
         buffer_cls = PPOFlowFPOBufferGPU if self.buffer_on_gpu else PPOFlowFPOBuffer
 
+        # 根据是否使用图像观测选择正确的 obs_dim 参数
+        obs_dim_param = self.obs_dims if self.use_image_obs else self.obs_dim
+
         self.buffer = buffer_cls(
             n_steps=self.n_steps,
             n_envs=self.n_envs,
@@ -178,7 +189,7 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
             act_steps=self.act_steps,
             action_dim=self.action_dim,
             n_cond_step=self.n_cond_step,
-            obs_dim=self.obs_dim,
+            obs_dim=obs_dim_param,
             save_full_observation=self.save_full_observations,
             furniture_sparse_reward=self.furniture_sparse_reward,
             best_reward_threshold_for_success=self.best_reward_threshold_for_success,
@@ -188,7 +199,7 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
             reward_scale_const=self.reward_scale_const,
             device=self.device
         )
-        log.info(f"Initialized FPO buffer: {buffer_cls.__name__}")
+        log.info(f"Initialized FPO buffer: {buffer_cls.__name__} with obs_dim={type(obs_dim_param).__name__}")
 
     def run(self):
         """
@@ -261,6 +272,7 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
                 processed_prev_obs = self._process_obs(self.prev_obs_venv)
                 self.buffer.add(
                     step=step,
+                    obs_venv=processed_obs,
                     state_venv=processed_prev_obs["state"],
                     action_venv=action.cpu().numpy() if isinstance(action, torch.Tensor) else action,
                     loss_eps_venv=action_info.loss_eps.cpu().numpy(),
@@ -274,11 +286,17 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
 
                 self.prev_obs_venv = obs_venv
                 self.cnt_train_step += self.n_envs * self.act_steps if not self.eval_mode else 0
+            # 在rollout结束后，更新done_venv以便下一次迭代正确设置firsts_trajs[0]
+            # 这对于正确检测episode边界很重要
+            # done_venv = terminated_venv | truncated_venv
+            # self.done_venv = done_venv.reshape(1, -1) if done_venv.ndim == 1 else done_venv
 
             self.buffer.summarize_episode_reward()
 
             if not self.eval_mode:
-                self.buffer.update(obs_venv, self.model.critic)
+                # 处理最终观测格式，确保包含所有必要的键
+                processed_final_obs = self._process_obs(obs_venv)
+                self.buffer.update(processed_final_obs, self.model.critic)
                 self.agent_update(verbose=self.verbose)
 
             self.log()
@@ -299,7 +317,15 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
         (obs, actions, loss_eps, loss_t, initial_cfm_loss,
          returns, values, advantages) = dataset
 
-        total_steps = obs.shape[0]
+        # total_steps = obs.shape[0]
+                # 获取总步数（obs 可能是字典或 tensor）
+        if isinstance(obs, dict):
+            # 图像观测模式：使用任意一个键的第一个维度
+            first_key = next(iter(obs.keys()))
+            total_steps = obs[first_key].shape[0]
+        else:
+            # 状态观测模式
+            total_steps = obs.shape[0]
         indices = np.arange(total_steps)
         
                 # 调试: 打印数据集统计信息
@@ -325,7 +351,12 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
                 batch_idx = indices[start:end]
 
                 # 构建 mini-batch
-                batch_obs = {"state": obs[batch_idx]}
+                # batch_obs = {"state": obs[batch_idx]}
+                                # 构建 batch 数据
+                if isinstance(obs, dict):
+                    batch_obs = {k: v[batch_idx] for k, v in obs.items()}
+                else:
+                    batch_obs = obs[batch_idx]
                 batch_actions = actions[batch_idx]
                 batch_loss_eps = loss_eps[batch_idx]
                 batch_loss_t = loss_t[batch_idx]
@@ -349,9 +380,11 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
                     use_bc_loss=getattr(self, 'use_bc_loss', False),
                     verbose=verbose and (update_epoch == 0 and start == 0)
                 )
-
+                # 添加详细的 CFM 调试信息
+                log.info(f"CFM Debug - Loss: {cfm_loss_mean:.6f} | "
+                        f"Ratio: mean={ratio_mean:.6f}, min={ratio_min:.6f}, max={ratio_max:.6f}")
                 # 总损失
-                total_loss = pg_loss + v_loss * self.vf_coef
+                total_loss = cfm_loss_mean + v_loss * self.vf_coef
                 if getattr(self, 'use_bc_loss', False):
                     total_loss += bc_loss * getattr(self, 'bc_coeff', 0.1)
 

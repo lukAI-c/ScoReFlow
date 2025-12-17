@@ -76,7 +76,7 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
                  logprob_debug_sample,
                  logprob_debug_recalculate,
                  epsilon_schedule='constant',   # epsilon schedule: 'constant', 'linear_decay', 'cosine'
-                 lamda = 10, # default: 1
+                 lamda = 1, # default: 1
                  ):
         
         super().__init__()
@@ -499,6 +499,7 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
             diffusion_std = np.sqrt(2 * eps_t * dt)
             # 5. Update: ak+1 = ak + drift + diffusion * noise
             xt_mean = xt + self.lamda * drift * dt
+            # print(self.lamda)
             if clip_intermediate_actions:
                 xt_mean = xt_mean.clamp(-self.denoised_clip_value, self.denoised_clip_value)
 

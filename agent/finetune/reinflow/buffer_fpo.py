@@ -79,10 +79,18 @@ class PPOFlowFPOBuffer(PPOFlowBuffer):
         - 不存储 chains_trajs，改为存储 loss_eps, loss_t, initial_cfm_loss
         - 不需要 logprobs_trajs
         """
-        # 复用基类的观测存储结构
-        self.obs_trajs = {
-            "state": np.zeros((self.n_steps, self.n_envs, self.n_cond_step, self.obs_dim))
-        }
+        # 观测存储结构：支持字典（图像+状态）或单一维度（仅状态）
+        if isinstance(self.obs_dim, dict):
+            # 图像观测模式：存储多个模态
+            self.obs_trajs = {
+                k: np.zeros((self.n_steps, self.n_envs, self.n_cond_step, *self.obs_dim[k]))
+                for k in self.obs_dim
+            }
+        else:
+            # 仅状态观测模式
+            self.obs_trajs = {
+                "state": np.zeros((self.n_steps, self.n_envs, self.n_cond_step, self.obs_dim))
+            }
 
         # 存储最终动作（替代 chains_trajs 中的最后一个）
         self.actions_trajs = np.zeros(
@@ -107,7 +115,7 @@ class PPOFlowFPOBuffer(PPOFlowBuffer):
         self.value_trajs = np.empty((self.n_steps, self.n_envs))
 
     def add(self, step: int,
-            state_venv: np.ndarray,
+            obs_venv: dict,  # 改为接收完整的观测字典
             action_venv: np.ndarray,
             loss_eps_venv: np.ndarray,
             loss_t_venv: np.ndarray,
@@ -115,16 +123,32 @@ class PPOFlowFPOBuffer(PPOFlowBuffer):
             reward_venv: np.ndarray,
             terminated_venv: np.ndarray,
             truncated_venv: np.ndarray,
-            value_venv: np.ndarray):
+            value_venv: np.ndarray,
+            # 保留向后兼容性
+            state_venv: np.ndarray = None):
         """
         添加一个时间步的数据
 
         与 PPOFlowBuffer.add() 的区别:
         - 接收 (action, loss_eps, loss_t, initial_cfm_loss) 而非 (chains, logprob)
+        - 支持多模态观测（图像+状态）
+
+        Args:
+            obs_venv: 观测字典，包含 "state" 和可选的 "rgb" 等键
+            state_venv: (已弃用) 为了向后兼容保留，如果提供则覆盖 obs_venv["state"]
         """
         done_venv = terminated_venv | truncated_venv
 
-        self.obs_trajs["state"][step] = state_venv
+        # 存储观测（支持多模态）
+        if state_venv is not None:
+            # 向后兼容：如果提供了 state_venv，使用它
+            self.obs_trajs["state"][step] = state_venv
+        else:
+            # 新方式：从 obs_venv 字典中提取所有模态
+            for k in self.obs_trajs:
+                if k in obs_venv:
+                    self.obs_trajs[k][step] = obs_venv[k]
+
         self.actions_trajs[step] = action_venv
         self.loss_eps_trajs[step] = loss_eps_venv
         self.loss_t_trajs[step] = loss_t_venv
@@ -142,10 +166,23 @@ class PPOFlowFPOBuffer(PPOFlowBuffer):
         (obs, actions, loss_eps, loss_t, initial_cfm_loss, returns, values, advantages)
 
         与 PPOFlowBuffer 返回 (obs, chains, returns, values, advantages, logprobs) 不同
+
+        obs 可以是:
+        - 字典 (图像观测模式): {"state": tensor, "rgb": tensor}
+        - tensor (仅状态模式): state tensor
         """
-        obs = torch.tensor(
-            self.obs_trajs["state"], device=self.device
-        ).float().flatten(0, 1)
+        # 构建观测：支持多模态
+        if isinstance(self.obs_dim, dict):
+            # 图像观测模式：返回字典
+            obs = {
+                k: torch.tensor(self.obs_trajs[k], device=self.device).float().flatten(0, 1)
+                for k in self.obs_trajs
+            }
+        else:
+            # 仅状态模式：返回 tensor
+            obs = torch.tensor(
+                self.obs_trajs["state"], device=self.device
+            ).float().flatten(0, 1)
 
         actions = torch.tensor(
             self.actions_trajs, device=self.device
@@ -178,8 +215,50 @@ class PPOFlowFPOBuffer(PPOFlowBuffer):
         return (obs, actions, loss_eps, loss_t, initial_cfm_loss,
                 returns, values, advantages)
 
-    # 注意：update_adv_returns() 和 update() 方法从 PPOBuffer 基类继承
-    # 无需重写，因为 GAE 计算逻辑与存储内容无关
+    @torch.no_grad()
+    def update_adv_returns(self, obs_venv: dict, critic: torch.nn.Module, device='cpu'):
+        """
+        更新优势估计和回报（CPU 版本）
+
+        使用 GAE (Generalized Advantage Estimation)
+
+        覆盖基类方法以支持图像观测（rgb 键）
+        """
+        # 构建观测字典，包含所有可用的键（state 和可选的 rgb）
+        obs_venv_ts = {}
+
+        # 处理 state 键
+        if "state" in obs_venv:
+            obs_venv_ts["state"] = torch.from_numpy(obs_venv["state"]).float().to(self.device)
+
+        # 处理 rgb 键（如果存在）
+        if "rgb" in obs_venv:
+            obs_venv_ts["rgb"] = torch.from_numpy(obs_venv["rgb"]).float().to(self.device)
+
+        self.advantages_trajs = np.zeros((self.n_steps, self.n_envs))
+
+        lastgaelam = 0
+        for t in reversed(range(self.n_steps)):
+            if t == self.n_steps - 1:
+                nextvalues = critic.forward(obs_venv_ts).reshape(1, -1)
+                nextvalues = nextvalues.cpu().numpy()
+            else:
+                nextvalues = self.value_trajs[t + 1]
+
+            non_terminal = 1.0 - self.terminated_trajs[t]
+            delta = (
+                self.reward_trajs[t] * self.reward_scale_const
+                + self.gamma * nextvalues * non_terminal
+                - self.value_trajs[t]
+            )
+            self.advantages_trajs[t] = lastgaelam = (
+                delta + self.gamma * self.gae_lambda * non_terminal * lastgaelam
+            )
+
+        self.returns_trajs = self.advantages_trajs + self.value_trajs
+
+    # 注意：update() 方法从 PPOBuffer 基类继承
+    # 无需重写，因为它只是调用 normalize_reward() 和 update_adv_returns()
 
 
 class PPOFlowFPOBufferGPU(PPOFlowFPOBuffer):
@@ -197,12 +276,24 @@ class PPOFlowFPOBufferGPU(PPOFlowFPOBuffer):
 
     def reset(self):
         """重置 buffer，在 GPU 上分配内存"""
-        self.obs_trajs = {
-            "state": torch.zeros(
-                (self.n_steps, self.n_envs, self.n_cond_step, self.obs_dim),
-                dtype=torch.float32, device=self.device
-            )
-        }
+        # 观测存储结构：支持字典（图像+状态）或单一维度（仅状态）
+        if isinstance(self.obs_dim, dict):
+            # 图像观测模式：存储多个模态
+            self.obs_trajs = {
+                k: torch.zeros(
+                    (self.n_steps, self.n_envs, self.n_cond_step, *self.obs_dim[k]),
+                    dtype=torch.float32, device=self.device
+                )
+                for k in self.obs_dim
+            }
+        else:
+            # 仅状态观测模式
+            self.obs_trajs = {
+                "state": torch.zeros(
+                    (self.n_steps, self.n_envs, self.n_cond_step, self.obs_dim),
+                    dtype=torch.float32, device=self.device
+                )
+            }
 
         self.actions_trajs = torch.zeros(
             (self.n_steps, self.n_envs, self.horizon_steps, self.action_dim),
@@ -238,7 +329,7 @@ class PPOFlowFPOBufferGPU(PPOFlowFPOBuffer):
         )
 
     def add(self, step: int,
-            state_venv,
+            obs_venv,  # 改为接收完整的观测字典
             action_venv,
             loss_eps_venv,
             loss_t_venv,
@@ -246,11 +337,17 @@ class PPOFlowFPOBufferGPU(PPOFlowFPOBuffer):
             reward_venv,
             terminated_venv,
             truncated_venv,
-            value_venv):
-        """添加一个时间步的数据（GPU 版本，自动处理类型转换）"""
+            value_venv,
+            # 保留向后兼容性
+            state_venv=None):
+        """
+        添加一个时间步的数据（GPU 版本，自动处理类型转换）
+
+        Args:
+            obs_venv: 观测字典，包含 "state" 和可选的 "rgb" 等键
+            state_venv: (已弃用) 为了向后兼容保留，如果提供则覆盖 obs_venv["state"]
+        """
         # 将 numpy 数据转换为 tensor
-        if isinstance(state_venv, np.ndarray):
-            state_venv = torch.from_numpy(state_venv).float().to(self.device)
         if isinstance(action_venv, np.ndarray):
             action_venv = torch.from_numpy(action_venv).float().to(self.device)
         if isinstance(loss_eps_venv, np.ndarray):
@@ -270,7 +367,21 @@ class PPOFlowFPOBufferGPU(PPOFlowFPOBuffer):
 
         done_venv = terminated_venv.bool() | truncated_venv.bool()
 
-        self.obs_trajs["state"][step] = state_venv
+        # 存储观测（支持多模态）
+        if state_venv is not None:
+            # 向后兼容：如果提供了 state_venv，使用它
+            if isinstance(state_venv, np.ndarray):
+                state_venv = torch.from_numpy(state_venv).float().to(self.device)
+            self.obs_trajs["state"][step] = state_venv
+        else:
+            # 新方式：从 obs_venv 字典中提取所有模态
+            for k in self.obs_trajs:
+                if k in obs_venv:
+                    obs_k = obs_venv[k]
+                    if isinstance(obs_k, np.ndarray):
+                        obs_k = torch.from_numpy(obs_k).float().to(self.device)
+                    self.obs_trajs[k][step] = obs_k
+
         self.actions_trajs[step] = action_venv
         self.loss_eps_trajs[step] = loss_eps_venv
         self.loss_t_trajs[step] = loss_t_venv
@@ -281,8 +392,24 @@ class PPOFlowFPOBufferGPU(PPOFlowFPOBuffer):
         self.value_trajs[step] = value_venv
 
     def make_dataset(self):
-        """将 buffer 转换为训练用的 tensor 数据集（GPU 版本，无需转换）"""
-        obs = self.obs_trajs["state"].flatten(0, 1)
+        """
+        将 buffer 转换为训练用的 tensor 数据集（GPU 版本，无需转换）
+
+        obs 可以是:
+        - 字典 (图像观测模式): {"state": tensor, "rgb": tensor}
+        - tensor (仅状态模式): state tensor
+        """
+        # 构建观测：支持多模态
+        if isinstance(self.obs_dim, dict):
+            # 图像观测模式：返回字典
+            obs = {
+                k: self.obs_trajs[k].flatten(0, 1)
+                for k in self.obs_trajs
+            }
+        else:
+            # 仅状态模式：返回 tensor
+            obs = self.obs_trajs["state"].flatten(0, 1)
+
         actions = self.actions_trajs.flatten(0, 1)
         loss_eps = self.loss_eps_trajs.flatten(0, 1)
         loss_t = self.loss_t_trajs.flatten(0, 1)
@@ -337,11 +464,24 @@ class PPOFlowFPOBufferGPU(PPOFlowFPOBuffer):
         注意：这个方法与 PPOBuffer.update_adv_returns 逻辑相同，
         但针对 GPU tensor 优化，避免 CPU-GPU 数据传输。
         """
-        obs_venv_ts = {
-            "state": torch.from_numpy(obs_venv["state"]).float().to(self.device)
-            if isinstance(obs_venv["state"], np.ndarray)
-            else obs_venv["state"].to(self.device)
-        }
+        # 构建观测字典，包含所有可用的键（state 和可选的 rgb）
+        obs_venv_ts = {}
+
+        # 处理 state 键
+        if "state" in obs_venv:
+            obs_venv_ts["state"] = (
+                torch.from_numpy(obs_venv["state"]).float().to(self.device)
+                if isinstance(obs_venv["state"], np.ndarray)
+                else obs_venv["state"].to(self.device)
+            )
+
+        # 处理 rgb 键（如果存在）
+        if "rgb" in obs_venv:
+            obs_venv_ts["rgb"] = (
+                torch.from_numpy(obs_venv["rgb"]).float().to(self.device)
+                if isinstance(obs_venv["rgb"], np.ndarray)
+                else obs_venv["rgb"].to(self.device)
+            )
 
         self.advantages_trajs = torch.zeros(
             self.n_steps, self.n_envs, device=self.device

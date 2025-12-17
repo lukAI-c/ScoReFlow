@@ -11,10 +11,9 @@ echo "Starting Franka Kitchen Pre-training..."
 
 MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
     --config-dir=cfg/gym/pretrain/kitchen-complete-v0 \
-    --config-name=pre_reflow_mlp \
+    --config-name=pre_reflow_mlp_ \
     device=cuda:1 \
     +sim_device=cuda:1 \
     +wandb.offline_mode=true \
-    train.n_steps=280\
 
 echo "Pre-training finished."

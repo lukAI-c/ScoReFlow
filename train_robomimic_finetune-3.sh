@@ -36,10 +36,11 @@ export PYOPENGL_PLATFORM="osmesa"
 python script/run.py \
     --config-dir=cfg/robomimic/finetune/square \
     --config-name=ft_fpo_reflow_mlp_img \
-    base_policy_path=null\
+    base_policy_path=null \
+    denoising_steps=10 \
     device=cuda:0 \
     sim_device=null \
     wandb.offline_mode=true \
-    env.n_envs=10
+    env.n_envs=20 \
 
 echo "Fine-tuning finished."
