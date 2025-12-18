@@ -36,7 +36,7 @@ max_std: 0.14
 env:
   n_envs: 50
   name: ${env_name}
-  best_reward_threshold_for_success: 0.5  # 降低成功阈值，更容易获得正反馈
+  best_reward_threshold_for_success: 1 
   max_episode_steps: 400
   save_video: false
   use_image_obs: true
@@ -70,7 +70,7 @@ wandb:
   offline_mode: false
 train:
   n_train_itr: 301
-  n_critic_warmup_itr: 5  # 增加critic预热迭代，帮助更好地估计value
+  n_critic_warmup_itr: 20  
   n_steps: 400
   gamma: 0.99  # 降低gamma，让agent更关注短期奖励
   augment: true
@@ -78,20 +78,20 @@ train:
   n_samples_per_action: 8
   average_losses_before_exp: true
   buffer_on_gpu: false
-  actor_lr: 3e-5  # 提高actor学习率，加快学习速度
+  actor_lr: 1e-5  # 提高actor学习率，加快学习速度
   actor_weight_decay: 0
   actor_lr_scheduler:
     type: cosine
-    first_cycle_steps: 100
+    first_cycle_steps: 300
     warmup_steps: 10
     min_lr: 1e-6
-  critic_lr: 3e-4  # 提高critic学习率
+  critic_lr: 1e-4  # 提高critic学习率
   critic_weight_decay: 0
   critic_lr_scheduler:
     type: cosine
-    first_cycle_steps: 100
+    first_cycle_steps: 300
     warmup_steps: 25
-    min_lr: 1e-4
+    min_lr: 1e-5
   save_model_freq: 100
   val_freq: 10
   render:
@@ -112,7 +112,7 @@ train:
   verbose: false
   clip_intermediate_actions: true
   account_for_initial_stochasticity: true
-  max_grad_norm: 25.0
+  max_grad_norm: 1.0
   use_bc_loss: false
   bc_coeff: 0.1
 model:
