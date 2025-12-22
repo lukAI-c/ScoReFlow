@@ -381,10 +381,11 @@ class TrainPPOFlowFPOAgent(TrainPPOFlowAgent):
                     verbose=verbose and (update_epoch == 0 and start == 0)
                 )
                 # 添加详细的 CFM 调试信息
-                log.info(f"CFM Debug - Loss: {cfm_loss_mean:.6f} | "
+                log.info(f"CFM Debug - CFM Loss: {cfm_loss_mean:.6f} | PG Loss: {pg_loss.item():.6f} | "
                         f"Ratio: mean={ratio_mean:.6f}, min={ratio_min:.6f}, max={ratio_max:.6f}")
-                # 总损失
-                total_loss = cfm_loss_mean + v_loss * self.vf_coef
+                # 总损失 = PG Loss + Value Loss (注意：用 pg_loss 而非 cfm_loss_mean！)
+                # cfm_loss_mean 只用于监控，不应该直接用作损失
+                total_loss = pg_loss + v_loss * self.vf_coef
                 if getattr(self, 'use_bc_loss', False):
                     total_loss += bc_loss * getattr(self, 'bc_coeff', 0.1)
 

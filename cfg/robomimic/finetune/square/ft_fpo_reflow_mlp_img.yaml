@@ -28,7 +28,7 @@ seed: 42
 device: cuda:0
 sim_device: cuda:0
 ###################################
-denoising_steps: 10
+denoising_steps: 4
 min_std: 0.08
 max_std: 0.14
 ###################################

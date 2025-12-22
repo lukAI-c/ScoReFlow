@@ -162,16 +162,19 @@ class PPOFlowFPO(nn.Module):
 
         这是 FPO 的核心创新：通过 CFM 损失变化近似策略比率
 
-        数学原理:
-            1. OT 插值: x_t = t * action + (1-t) * eps
-            2. 目标速度: v_target = action - eps (直线路径的导数)
-            3. 预测速度: v_pred = network(obs, x_t, t)
-            4. CFM 损失: L = 0.5 * ||v_pred - v_target||^2
+        数学原理 (适配 ReinFlow 的约定):
+            ReinFlow 的约定:
+            - x1 = 真实动作 (目标)
+            - x0 = 噪声 (eps)
+            - xt = t * x1 + (1-t) * x0 = t * action + (1-t) * eps
+              - 当 t=0 时，xt = eps (噪声起点)
+              - 当 t=1 时，xt = action (动作终点)
+            - v = x1 - x0 = action - eps (速度方向：从噪声到动作)
 
         Args:
             cond: 条件信息字典 {"state": [B, cond_steps, obs_dim]}
-            action: 展平的动作 [B, D] 其中 D = horizon_steps * action_dim
-            eps: 噪声样本 [B, n_samples, D]
+            action: 展平的动作 x1 [B, D] 其中 D = horizon_steps * action_dim
+            eps: 噪声样本 x0 ~ N(0,I) [B, n_samples, D]
             t: 时间点 [B, n_samples, 1]
 
         Returns:
@@ -182,10 +185,11 @@ class PPOFlowFPO(nn.Module):
         # 扩展 action: [B, D] -> [B, n_samples, D]
         action_expanded = action.unsqueeze(1).expand(-1, n_samples, -1)
 
-        # OT 插值: x_t = t * action + (1-t) * eps
+        # OT 插值 (ReinFlow 约定): xt = t * x1 + (1-t) * x0 = t * action + (1-t) * eps
+        # t=0: 噪声起点, t=1: 动作终点
         x_t = t * action_expanded + (1 - t) * eps  # [B, n_samples, D]
 
-        # 目标速度（直线路径的导数）
+        # 目标速度 (ReinFlow 约定): v = x1 - x0 = action - eps
         target_velocity = action_expanded - eps  # [B, n_samples, D]
 
         # 准备网络输入：需要 reshape 来匹配网络期望的形状
@@ -206,10 +210,14 @@ class PPOFlowFPO(nn.Module):
 
         # 前向传播获取预测速度
         v_pred = self.actor_ft(x_t_reshaped, t_reshaped, cond_expanded)
+        # 网络返回 (B * n_samples, horizon_steps, action_dim)
+        # 需要先 flatten 再 reshape
+        v_pred = v_pred.view(B * n_samples, -1)  # [B * n_samples, D]
         v_pred = v_pred.reshape(B, n_samples, D)  # [B, n_samples, D]
 
-        # CFM 损失: 0.5 * ||v_pred - v_target||^2, 在动作维度上求和
-        cfm_loss = 0.5 * ((v_pred - target_velocity) ** 2).sum(dim=-1)  # [B, n_samples]
+        # CFM 损失: ||v_pred - u||^2, 在动作维度上取均值
+        # 使用 mean 而不是 sum，使损失量级与维度无关（参考原始 FPO）
+        cfm_loss = ((v_pred - target_velocity) ** 2).mean(dim=-1)  # [B, n_samples]
 
         return cfm_loss
 
@@ -308,6 +316,33 @@ class PPOFlowFPO(nn.Module):
 
         return xt.clamp(self.act_min, self.act_max)
 
+    @torch.no_grad()
+    def get_actions_pretrained(
+        self,
+        cond: dict,
+        clip_intermediate_actions: bool = True,
+    ) -> Tensor:
+        """
+        使用预训练模型 (actor_old) 采样动作，用于验证预训练模型是否工作
+
+        这个方法用于调试：如果预训练模型本身就不能完成任务，
+        那么 FPO 微调也不会成功。
+        """
+        B = cond["state"].shape[0]
+        dt = 1.0 / self.inference_steps
+
+        xt = torch.randn(B, self.horizon_steps, self.action_dim, device=self.device)
+        steps = torch.linspace(0, 1 - dt, self.inference_steps, device=self.device)
+
+        for i in range(self.inference_steps):
+            t = steps[i].expand(B)
+            vt = self.actor_old(xt, t, cond)  # 使用 actor_old 而不是 actor_ft
+            xt = xt + vt * dt
+            if clip_intermediate_actions:
+                xt = xt.clamp(-self.denoised_clip_value, self.denoised_clip_value)
+
+        return xt.clamp(self.act_min, self.act_max)
+
     # ===================== FPO 损失计算 =====================
 
     def loss(
@@ -354,24 +389,30 @@ class PPOFlowFPO(nn.Module):
         B = actions.shape[0]
         action_flat = actions.flatten(-2, -1).detach()  # [B, D]
 
+        # 确保 obs 是字典格式（_compute_cfm_loss 期望字典）
+        if isinstance(obs, dict):
+            cond = obs
+        else:
+            cond = {"state": obs}
+
         # 1. 计算当前策略下的 CFM 损失（使用相同的 eps, t）
-        new_cfm_loss = self._compute_cfm_loss(obs, action_flat, loss_eps, loss_t)
+        new_cfm_loss = self._compute_cfm_loss(cond, action_flat, loss_eps, loss_t)
 
         # 2. 计算策略比率 ρ = exp(old_loss - new_loss)
+        # 参考原始 FPO: 直接使用损失差，不额外 scaling
         if self.average_losses_before_exp:
-            # 方案1: 先平均损失，再取指数（更稳定）
+            # 方案1: 先平均损失，再取指数（更稳定，原始 FPO 默认使用）
             old_mean = initial_cfm_loss.mean(dim=-1)  # [B]
             new_mean = new_cfm_loss.mean(dim=-1)      # [B]
-            # rho = torch.exp(old_mean - new_mean)      # [B]
             diff = old_mean - new_mean
-            # 更严格的限制：ratio 在 [0.37, 2.7] 之间
-            diff_clipped = torch.clamp(diff, -1.0, 1.0)
-            rho = torch.exp(diff_clipped)             # [B]
+            # 直接取 exp，不需要严格 clamp（CFM loss 用 mean 后量级较小）
+            rho = torch.exp(diff)  # [B]
         else:
             # 方案2: 逐样本计算比率再平均（更精确但可能不稳定）
             diff = initial_cfm_loss - new_cfm_loss
-            diff_clipped = torch.clamp(diff, -3.0, 3.0)  # 防止指数爆炸
-            rho = torch.exp(diff_clipped).mean(dim=-1)   # [B]
+            # 仅在 average=False 时 clamp 防止指数爆炸
+            diff_clipped = torch.clamp(diff, -3.0, 3.0)
+            rho = torch.exp(diff_clipped).mean(dim=-1)  # [B]
 
         # 3. 优势标准化
         advantages_norm = (advantages - advantages.mean()) / (advantages.std() + 1e-8)

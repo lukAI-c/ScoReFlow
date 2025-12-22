@@ -40,6 +40,6 @@ python script/run.py \
     device=cuda:0 \
     sim_device=null \
     wandb.offline_mode=true \
-    env.n_envs=20 \
+    env.n_envs=5 \
 
 echo "Fine-tuning finished."

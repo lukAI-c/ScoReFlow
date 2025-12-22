@@ -15,7 +15,7 @@ echo "Starting OpenAI Gym Fine-tuning..."
 
 python script/run.py \
     --config-dir=cfg/gym/finetune/walker2d-v2 \
-    --config-name=ft_ppo_reflow_mlp_score \
+    --config-name=ft_ppo_reflow_mlp_dual_stream \
     base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/walker2d-medium-v2_pre_reflow_mlp_ta4_td20_seed42/2025-12-10_13-16-15_42/checkpoint/last.pt\
     device=cuda:0 \
 

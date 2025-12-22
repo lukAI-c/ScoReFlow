@@ -1,0 +1,98 @@
+_target_: agent.eval.eval_reflow_agent_dual_stream.EvalDualStreamAgent
+name: kitchen-complete-v0_eval_dual_stream_mlp_ta4_td4_cfg1.5
+logdir: /inspire/hdd/project/inference-chip/lijinhao-240108540148/research_clk/ReinFlow/log/gym/eval/kitchen-complete-v0_eval_dual_stream_mlp_ta4_td4_cfg1.5/2025-12-22_08-57-28_42
+base_policy_path: /inspire/hdd/project/inference-chip/lijinhao-240108540148/research_clk/ReinFlow/log/gym/finetune/kitchen-complete-v0_ppo_reflow_mlp_dual_stream_ta4_td4_cfg2.0/2025-12-19_05-09-27_seed42/checkpoint/best.pt
+normalization_path: /inspire/hdd/project/inference-chip/lijinhao-240108540148/research_clk/ReinFlow/data/gym/kitchen-complete-v0/normalization.npz
+seed: 42
+device: cuda:0
+sim_device: cuda:0
+env_name: kitchen-complete-v0
+obs_dim: 60
+action_dim: 9
+denoising_steps: 4
+denoising_step_list:
+- 4
+cond_steps: 1
+horizon_steps: 4
+act_steps: 4
+cfg_weight: 1.5
+eval_mode: true
+load_ema: false
+trust_ratio: 0.5
+use_direction_constraint: false
+epsilon_t: 0.0
+epsilon_schedule: constant
+batch_size: 128
+n_steps: 280
+render_num: 0
+env:
+  n_envs: 40
+  name: kitchen-complete-v0
+  max_episode_steps: 280
+  reset_at_iteration: false
+  save_video: false
+  best_reward_threshold_for_success: 4.0
+  wrappers:
+    mujoco_locomotion_lowdim:
+      normalization_path: /inspire/hdd/project/inference-chip/lijinhao-240108540148/research_clk/ReinFlow/data/gym/kitchen-complete-v0/normalization.npz
+    multi_step:
+      n_obs_steps: 1
+      n_action_steps: 4
+      max_episode_steps: 280
+      reset_within_step: true
+model:
+  _target_: model.flow.ft_ppo.ppoflow_dual_stream.DualStreamPPOFlow
+  device: cuda:0
+  cfg_weight: 1.5
+  cfg_weight_schedule: constant
+  freeze_prior: true
+  trust_ratio: 0.5
+  use_direction_constraint: false
+  policy:
+    _target_: model.flow.mlp_flow_score.FlowMLP
+    horizon_steps: 4
+    action_dim: 9
+    cond_dim: 60
+    time_dim: 16
+    mlp_dims:
+    - 256
+    - 256
+    - 256
+    cond_mlp_dims:
+    - 128
+    - 32
+    activation_type: Mish
+    out_activation_type: Identity
+    use_layernorm: false
+    residual_style: true
+  critic:
+    _target_: model.common.critic.CriticObs
+    cond_dim: 60
+    mlp_dims:
+    - 256
+    - 256
+    - 256
+    activation_type: Mish
+    residual_style: true
+  actor_policy_path: /inspire/hdd/project/inference-chip/lijinhao-240108540148/research_clk/ReinFlow/log/gym/finetune/kitchen-complete-v0_ppo_reflow_mlp_dual_stream_ta4_td4_cfg2.0/2025-12-19_05-09-27_seed42/checkpoint/best.pt
+  load_weights_in_init: false
+  act_dim: 9
+  horizon_steps: 4
+  act_min: -1
+  act_max: 1
+  obs_dim: 60
+  cond_steps: 1
+  inference_steps: 4
+  epsilon_t: 0.0
+  epsilon_schedule: constant
+  randn_clip_value: 3
+  logprob_min: -1.0
+  logprob_max: 1.0
+  clip_ploss_coef: 0.01
+  clip_ploss_coef_base: 0.01
+  clip_ploss_coef_rate: 3
+  clip_vloss_coef: null
+  denoised_clip_value: 1.0
+  logprob_debug_sample: false
+  logprob_debug_recalculate: false
+render_onscreen: false
