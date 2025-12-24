@@ -1,0 +1,257 @@
+###################################
+# Dual-Stream Score Editing Configuration (Optimized for Stability)
+###################################
+
+env_suite: robomimic
+env_name: square
+
+obs_dim: 9
+cond_steps: 1
+img_cond_steps: 1
+
+action_dim: 7
+horizon_steps: 4
+act_steps: 4
+
+defaults:
+  - _self_
+hydra:
+  run:
+    dir: ${logdir}
+
+_target_: agent.finetune.reinflow.train_ppo_flow_img_agent_dual_stream.TrainPPOImgFlowAgentDualStream
+
+name: ${env_name}_dual_stream_safe_cfg_lr_fix_${seed}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/finetune/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/square/ReFlow/state_2000.pt
+resume_path: null
+robomimic_env_cfg_path: cfg/robomimic/env_meta/${env_name}-img.json
+normalization_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/${env_name}-img/normalization.npz
+
+seed: 42
+device: cuda:0
+sim_device: cuda:0
+
+###################################
+# Flow Parameters
+###################################
+# 建议降低步数以提高 PPO 采样效率，前提是预训练使用了 ReFlow/OT-CFM
+denoising_steps: 8  
+
+# Score-based SDE parameters
+epsilon_t: 0.1  # 稍微降低噪声，依赖 CFG 进行引导
+epsilon_schedule: linear_decay 
+lamda: 1.0
+
+###################################
+# Dual-Stream CFG Parameters (CRITICAL CHANGES)
+###################################
+# 1. 采用“安全引导”策略：先插值(0.3)保证不摔倒，后外推(1.5)追求高分
+cfg_weight: 1.5  # 这是最终权重
+cfg_weight_schedule: linear_increase  # 需确保代码中实现了此逻辑 
+cfg_crossover_progress: 0.4  # 前40%训练都在做安全插值
+
+# 2. 速度信赖域约束 (防止 Reward Stream 把机器人扯翻)
+max_guidance_norm: 0.5 
+
+# 3. 策略冻结：先求稳，暂时完全冻结 Prior
+freeze_prior: true 
+unfreeze_prior_schedule: none  # 暂时设为 none，等 reward 跑起来再改为 linear/layerwise
+unfreeze_start_progress: 0.8   # 如果要开，也建议很晚再开
+unfreeze_end_progress: 1.0
+unfreeze_prior_lr_scale: 0.1
+
+###################################
+# Environment Configuration
+###################################
+env:
+  n_envs: 50
+  name: ${env_name}
+  best_reward_threshold_for_success: 1
+  max_episode_steps: 400
+  save_video: false
+  use_image_obs: true
+  wrappers:
+    robomimic_image:
+      normalization_path: ${normalization_path}
+      low_dim_keys:
+      - robot0_eef_pos
+      - robot0_eef_quat
+      - robot0_gripper_qpos
+      image_keys:
+      - agentview_image
+      shape_meta: ${shape_meta}
+    multi_step:
+      n_obs_steps: ${cond_steps}
+      n_action_steps: ${act_steps}
+      max_episode_steps: ${env.max_episode_steps}
+      reset_within_step: true
+
+shape_meta:
+  obs:
+    rgb:
+      shape: [3,96,96]
+    state:
+      shape: [9]
+  action:
+    shape: [7]
+
+wandb:
+  entity: ${oc.env:REINFLOW_WANDB_ENTITY}
+  project: robomimic-${env_name}-finetune-dual-stream
+  run: ${now:%Y-%m-%d}_${now:%H-%M-%S}_${name}
+  offline_mode: false
+
+###################################
+# Training Configuration
+###################################
+train:
+  n_train_itr: 301
+  n_critic_warmup_itr: 2
+  n_steps: 400
+  gamma: 0.999
+  augment: true
+  grad_accumulate: 20
+  
+  # Actor LR (保持较小，防止破坏流形)
+  actor_lr: 3.5e-06
+  actor_weight_decay: 0
+  actor_lr_scheduler:
+    type: cosine
+    first_cycle_steps: 300 # 覆盖整个训练周期
+    warmup_steps: 10
+    min_lr: 1.0e-6
+  
+  # Prior LR (备用)
+  prior_lr: 3.5e-07
+  prior_weight_decay: 0
+  prior_lr_scheduler:
+    type: cosine
+    first_cycle_steps: 300
+    warmup_steps: 10
+    min_lr: 1.0e-7
+  
+  # Critic LR (CRITICAL FIX)
+  # 之前是 4.5e-4 (太大)，现在改为 3.5e-5
+  # 这能防止 Critic 在 Actor 还没学会前就预测 Value=0
+  critic_lr: 3.5e-5
+  critic_weight_decay: 0
+  critic_lr_scheduler:
+    type: cosine
+    first_cycle_steps: 300
+    warmup_steps: 25
+    min_lr: 1.0e-5
+  
+  save_model_freq: 50
+  val_freq: 10
+  render:
+    freq: 1
+    num: 0
+  
+  # PPO parameters
+  reward_scale_running: true
+  reward_scale_const: 1.0
+  gae_lambda: 0.95
+  batch_size: 500
+  logprob_batch_size: 1000
+  update_epochs: 10
+  vf_coef: 0.5
+  ent_coef: 0.01
+  target_kl: 0.01 # 稍微放宽一点 KL 限制
+  lr_schedule: fixed
+  repeat_samples: true
+  verbose: false
+  clip_intermediate_actions: true
+  account_for_initial_stochasticity: true
+  max_grad_norm: 10.0 # 稍微严格一点的梯度裁剪
+
+###################################
+# Model Configuration
+###################################
+model:
+  _target_: model.flow.ft_ppo.ppoflow_dual_stream.DualStreamPPOFlow
+  device: ${device}
+  actor_policy_path: ${base_policy_path}
+  
+  policy:
+    _target_: model.flow.mlp_flow_score.VisionFlowMLP
+    backbone:
+      _target_: model.common.vit.VitEncoder
+      obs_shape: ${shape_meta.obs.rgb.shape}
+      num_channel: ${eval:'3 * ${img_cond_steps}'}
+      img_h: ${shape_meta.obs.rgb.shape[1]}
+      img_w: ${shape_meta.obs.rgb.shape[2]}
+      cfg:
+        patch_size: 8
+        depth: 1
+        embed_dim: 128
+        num_heads: 4
+        embed_style: embed2
+        embed_norm: 0
+    augment: false
+    spatial_emb: 128
+    time_dim: 32
+    mlp_dims: [768,768,768]
+    residual_style: true
+    img_cond_steps: ${img_cond_steps}
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+    horizon_steps: ${horizon_steps}
+    action_dim: ${action_dim}
+  
+  critic:
+    _target_: model.common.critic.ViTCritic
+    spatial_emb: 128
+    augment: false
+    backbone:
+      _target_: model.common.vit.VitEncoder
+      obs_shape: ${shape_meta.obs.rgb.shape}
+      num_channel: ${eval:'3 * ${img_cond_steps}'}
+      img_h: ${shape_meta.obs.rgb.shape[1]}
+      img_w: ${shape_meta.obs.rgb.shape[2]}
+      cfg:
+        patch_size: 8
+        depth: 1
+        embed_dim: 128
+        num_heads: 4
+        embed_style: embed2
+        embed_norm: 0
+    img_cond_steps: ${img_cond_steps}
+    mlp_dims: [256,256,256]
+    activation_type: Mish
+    residual_style: true
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+  
+  # Model parameters
+  act_dim: ${action_dim}
+  horizon_steps: ${horizon_steps}
+  act_min: -1
+  act_max: 1
+  obs_dim: ${obs_dim}
+  cond_steps: ${cond_steps}
+  
+  # Score-based SDE parameters
+  inference_steps: ${denoising_steps}
+  epsilon_t: ${epsilon_t}
+  epsilon_schedule: ${epsilon_schedule}
+  lamda: ${lamda}
+  
+  # Dual-Stream CFG parameters (传递到 Model Init)
+  cfg_weight: ${cfg_weight}
+  cfg_weight_schedule: ${cfg_weight_schedule}
+  freeze_prior: ${freeze_prior}
+  unfreeze_prior_schedule: ${unfreeze_prior_schedule}
+  unfreeze_start_progress: ${unfreeze_start_progress}
+  unfreeze_end_progress: ${unfreeze_end_progress}
+  unfreeze_prior_lr_scale: ${unfreeze_prior_lr_scale}
+  
+  # PPO parameters
+  randn_clip_value: 3.0
+  logprob_min: -1.0
+  logprob_max: 1.0
+  clip_ploss_coef: 0.01
+  clip_ploss_coef_base: 0.001
+  clip_ploss_coef_rate: 3.0
+  clip_vloss_coef: null
+  denoised_clip_value: 1.0
+  logprob_debug_sample: false
+  logprob_debug_recalculate: false

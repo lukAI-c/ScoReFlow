@@ -15,12 +15,8 @@ MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
     base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/kitchen-complete-v0_pre_reflow_mlp_ta4_td20_seed42/2025-12-12_03-46-29_42/checkpoint/best.pt \
     device=cuda:0 \
     sim_device=cuda:0 \
-    model.cfg_weight=1.3 \
-
-    # wandb.offline_mode=true \
-    # env.save_video=true \
-    # train.render.num=5 \
-    # train.render.freq=10
+    model.cfg_weight=0.5 \
+    gamma=0.5 \
 
 
 echo "Fine-tuning finished."

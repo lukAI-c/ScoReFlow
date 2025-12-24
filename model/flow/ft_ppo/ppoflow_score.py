@@ -677,5 +677,3 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
             noise_std.item(),
             newvalues.mean().item(),#Q function
         )
-
-

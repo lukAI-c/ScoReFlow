@@ -1,6 +1,7 @@
 ######################################################################
 env_name: kitchen-complete-v0
 
+gamma: 2.0
 # future action forecasts
 action_dim: 9
 horizon_steps: 4
@@ -24,8 +25,8 @@ hydra:
   run:
     dir: ${logdir}
 _target_: agent.finetune.reinflow.train_ppo_flow_agent_dual_stream.TrainPPOFlowDualStreamAgent
-name: ${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}_seed${seed}
-logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}/${now:%Y-%m-%d}_${now:%H-%M-%S}_seed${seed}
+name: ${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}_gamma${gamma}_seed${seed}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}/${now:%Y-%m-%d}_${now:%H-%M-%S}_gamma${gamma}_seed${seed}
 base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/gym/pretrain/kitchen-complete-v0_pre_reflow_mish_mlp_ta4_td4/2025-05-05_20-13-17_42/checkpoint/state_500.pt
 normalization_path: ${oc.env:REINFLOW_DATA_DIR}/gym/${env_name}/normalization.npz
 resume_path: null
@@ -35,11 +36,11 @@ sim_device: cuda:0
 denoising_steps: 4
 # Score-based exploration parameters
 epsilon_t: 0.1
-epsilon_schedule: linear_decay  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
+epsilon_schedule: linear_decay_gamma  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
 env:
   n_envs: 40
   name: ${env_name}
-  max_episode_steps: 480 # 280
+  max_episode_steps: 280 # 280
   reset_at_iteration: false
   save_video: false
   best_reward_threshold_for_success: 4.0
@@ -102,7 +103,7 @@ model:
   cfg_weight_schedule: constant  # Options: constant, linear_increase, linear_decrease, cosine, training_adaptive
   freeze_prior: true           # 是否冻结保守流
   # 逐步解冻保守流参数
-  unfreeze_prior_schedule: none  # Options: none, threshold, linear, layerwise # layerwise 逐层解冻
+  unfreeze_prior_schedule: layerwise  # Options: none, threshold, linear, layerwise # layerwise 逐层解冻
   unfreeze_start_progress: 0.6   # 开始解冻的训练进度 (0-1), 例如 0.5 表示训练到一半时开始解冻 0.2
   unfreeze_end_progress: 0.8     # 0.7
   unfreeze_prior_lr_scale: 0.1   # 解冻后 prior 学习率相对于 actor_lr 的缩放系数
@@ -151,4 +152,3 @@ model:
   denoised_clip_value: 1.0
   logprob_debug_sample: false
   logprob_debug_recalculate: false
-

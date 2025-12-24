@@ -1,4 +1,4 @@
-# MIT License
+# MIT License 可学习参数版本qwqwqwq
 # Copyright (c) 2025 ReinFlow Authors - Dual-Stream Score Editing
 
 """
@@ -67,7 +67,11 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
                  obs_dim: int,
                  cond_steps: int,
                  inference_steps: int,        # 流采样步数
-                 epsilon_t: float,            # 噪声系数 εt
+                 epsilon_t: float,            # 噪声系数 εt (初始值)
+                 # 可学习 epsilon 参数
+                 learn_epsilon: bool = False,  # 是否学习 epsilon
+                 epsilon_min: float = 0.01,    # epsilon 最小值
+                 epsilon_max: float = 1.0,     # epsilon 最大值
                  # Dual-Stream 特定参数
                  cfg_weight: float = 1.5,     # CFG 引导权重 w
                  cfg_weight_schedule: str = 'constant',  # CFG 权重调度
@@ -102,10 +106,33 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
         self.obs_dim = obs_dim
         self.cond_steps = cond_steps
         
-        # Score-based SDE parameters
-        self.epsilon_t: float = epsilon_t
+        # Score-based SDE parameters - 可学习 epsilon
+        self.learn_epsilon = learn_epsilon
+        self.initial_epsilon = epsilon_t
+        self.epsilon_min = epsilon_min
+        self.epsilon_max = epsilon_max
         self.epsilon_schedule: str = epsilon_schedule
         self.lamda = lamda
+
+        # 使用 log 空间确保 epsilon 始终为正
+        # 初始化: 通过 sigmoid 映射到 [epsilon_min, epsilon_max]
+        # epsilon = epsilon_min + sigmoid(logit) * (epsilon_max - epsilon_min)
+        # 反解初始 logit: logit = log((eps - min) / (max - eps))
+        init_eps_clamped = max(epsilon_min + 1e-6, min(epsilon_max - 1e-6, epsilon_t))
+        init_ratio = (init_eps_clamped - epsilon_min) / (epsilon_max - epsilon_min)
+        init_logit = math.log(init_ratio / (1 - init_ratio))  # inverse sigmoid
+
+        if learn_epsilon:
+            self.epsilon_logit = nn.Parameter(
+                torch.tensor(init_logit, device=device, dtype=torch.float32)
+            )
+            log.info(f"Learnable epsilon enabled: initial={epsilon_t:.4f}, range=[{epsilon_min}, {epsilon_max}]")
+        else:
+            # 不学习时注册为 buffer (不参与梯度)
+            self.register_buffer(
+                'epsilon_logit',
+                torch.tensor(init_logit, device=device, dtype=torch.float32)
+            )
         
         # Dual-Stream CFG parameters
         self.cfg_weight = cfg_weight
@@ -179,6 +206,83 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
         reward = sum(p.numel() for p in self.actor_reward.parameters()) / 1e6
         critic = sum(p.numel() for p in self.critic.parameters()) / 1e6
         log.info(f"Dual-Stream params: Total={total:.2f}M, Prior={prior:.2f}M, Reward={reward:.2f}M, Critic={critic:.2f}M")
+
+    # ===================== 可学习 Epsilon =====================
+
+    @property
+    def epsilon_t(self) -> float:
+        """获取当前 epsilon 值 (用于日志和兼容 ScoreFunctionMixin)"""
+        return self._get_epsilon_value().item()
+
+    def _get_epsilon_value(self) -> torch.Tensor:
+        """获取当前 epsilon 值 (保持 Tensor 用于梯度传播)"""
+        if self.learn_epsilon:
+            # 使用 sigmoid 将 logit 映射到 [epsilon_min, epsilon_max]
+            eps = self.epsilon_min + torch.sigmoid(self.epsilon_logit) * (self.epsilon_max - self.epsilon_min)
+            return eps
+        else:
+            # 不学习时直接返回初始值
+            return torch.tensor(self.initial_epsilon, device=self.device)
+
+
+    def get_epsilon_at_time(
+        self,
+        t: float,
+        training_progress: float = 0.0
+    ) -> torch.Tensor:
+        """
+        获取时间 t 的 epsilon 值 (覆盖 ScoreFunctionMixin 的方法)
+
+        返回 Tensor 以保持梯度传播
+        """
+        # 如果不学习 epsilon，使用原始的 ScoreFunction.get_epsilon() 方法
+        if not self.learn_epsilon:
+            from model.flow.score_utils import ScoreFunction
+            eps_val = ScoreFunction.get_epsilon(
+                t=t,
+                epsilon_0=self.initial_epsilon,
+                schedule=self.epsilon_schedule,
+                epsilon_min=0.01,  # 使用原始默认值
+                training_progress=training_progress
+            )
+            return torch.tensor(eps_val, device=self.device)
+
+        # 以下是可学习 epsilon 的逻辑
+        # 限幅: 接近 t=1 时不加噪声
+        if t > 0.95:
+            return torch.tensor(0.0, device=self.device)
+
+        # 获取基础 epsilon (可学习)
+        eps_base = self._get_epsilon_value()
+
+        # 应用时间调度 (使用 torch 操作保持梯度传播)
+        if self.epsilon_schedule == 'constant':
+            eps_t = eps_base
+        elif self.epsilon_schedule == 'linear_decay':
+            eps_t = eps_base * (1 - t)
+        elif self.epsilon_schedule == 'cosine':
+            # 使用 torch.cos 保持梯度传播
+            eps_t = eps_base * 0.5 * (1 + torch.cos(torch.tensor(math.pi * t, device=self.device)))
+        elif self.epsilon_schedule == 'sqrt_decay':
+            # 使用 torch.sqrt 保持梯度传播
+            eps_t = eps_base * torch.sqrt(torch.tensor(max(0.0, 1 - t), device=self.device))
+        elif self.epsilon_schedule == 'quadratic_decay':
+            eps_t = eps_base * (1 - t) ** 2
+        elif self.epsilon_schedule == 'training_decay':
+            decay_factor = 1 - 0.5 * training_progress
+            eps_t = eps_base * decay_factor * (1 - t)
+        else:
+            eps_t = eps_base
+
+        # 确保不低于最小值
+        eps_t = torch.clamp(eps_t, min=self.epsilon_min)
+        return eps_t
+
+    def get_epsilon_params(self) -> list:
+        """获取 epsilon 可学习参数列表 (用于优化器)"""
+        if self.learn_epsilon:
+            return [self.epsilon_logit]
+        return []
 
     # ===================== 逐步解冻保守流 =====================
 
@@ -326,7 +430,18 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
         """
         if cfg_weight is None:
             cfg_weight = self.cfg_weight
+                # 保守流 (Prior): 锚定数据流形
+                
+        # 检查是否有任何 prior 参数需要梯度（解冻状态）
+        prior_needs_grad = any(p.requires_grad for p in self.actor_prior.parameters())
 
+        if prior_needs_grad:
+            # 有解冻的参数，需要启用梯度
+            v_prior = self.actor_prior(xt, t_batch, cond)
+        else:
+            # 完全冻结，禁用梯度以节省内存
+            with torch.no_grad():
+                v_prior = self.actor_prior(xt, t_batch, cond)
         # 保守流 (Prior): 锚定数据流形
         with torch.no_grad() if self.freeze_prior else torch.enable_grad():
             v_prior = self.actor_prior(xt, t_batch, cond)
@@ -435,7 +550,8 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
 
             # 4. SDE 更新: drift = v_guided + εt·st
             drift = v_guided + eps_t * st
-            diffusion_std = np.sqrt(2 * eps_t * dt)
+            # diffusion_std = np.sqrt(2 * eps_t * dt)
+            diffusion_std = torch.sqrt(2 * eps_t * dt)
 
             # 5. 更新均值
             xt_mean = xt + self.lamda * drift * dt
@@ -556,12 +672,23 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
             if clip_intermediate_actions:
                 mean = mean.clamp(-self.denoised_clip_value, self.denoised_clip_value)
 
-            # 转移标准差
-            std = np.sqrt(2 * eps_t * dt)
-            noise_std_values.append(std)
+            # # 转移标准差
+            # # std = np.sqrt(2 * eps_t * dt)
+            # std = torch.sqrt(2 * eps_t * dt)
+            # noise_std_values.append(std)
 
-            # 转移分布
-            trans_dist = Normal(mean.flatten(-2, -1), std)
+            # # 转移分布
+            # trans_dist = Normal(mean.flatten(-2, -1), std)
+            
+            # 转移标准差 - 保持为 Tensor 以传播梯度到 epsilon_logit
+            # std = np.sqrt(2 * eps_t * dt)
+            std = torch.sqrt(2 * eps_t * dt)
+            noise_std_values.append(std.detach())  # 日志记录用 detach 
+
+            # 转移分布 - std 需要扩展以匹配 mean 的形状
+            mean_flat = mean.flatten(-2, -1)
+            std_expanded = std.expand_as(mean_flat)  # 保持梯度传播
+            trans_dist = Normal(mean_flat, std_expanded)
 
             # 下一状态的 log 概率
             xt_next = x_chain[:, i + 1].flatten(-2, -1)
@@ -589,7 +716,8 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
         if verbose_entropy_stats and get_entropy:
             log.info(f"Entropy Percentiles: 10%={entropy_rate_est.quantile(0.1):.2f}, 50%={entropy_rate_est.median():.2f}, 90%={entropy_rate_est.quantile(0.9):.2f}")
 
-        noise_std_mean = torch.tensor(np.mean(noise_std_values), device=self.device)
+        # noise_std_mean = torch.tensor(np.mean(noise_std_values), device=self.device)
+        noise_std_mean = torch.stack(noise_std_values).mean()
 
         if get_entropy:
             if get_chains_stds:
@@ -718,3 +846,4 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
             noise_std.item(),
             newvalues.mean().item(),
         )
+

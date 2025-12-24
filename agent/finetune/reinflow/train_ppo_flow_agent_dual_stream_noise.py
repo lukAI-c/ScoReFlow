@@ -1,4 +1,4 @@
-# MIT License
+# MIT License 可学习参数版本wqwqwqwq
 # Copyright (c) 2025 ReinFlow Authors - Dual-Stream Score Editing
 
 """
@@ -45,6 +45,12 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
         self.unfreeze_start_progress = cfg.model.get('unfreeze_start_progress', 0.5)
         self.unfreeze_prior_lr_scale = cfg.model.get('unfreeze_prior_lr_scale', 0.1)
 
+        # 可学习 epsilon 参数
+        self.learn_epsilon = cfg.model.get('learn_epsilon', False)
+        self.epsilon_lr = cfg.train.get('epsilon_lr', 1e-4)
+        self.epsilon_optimizer = None
+        self.epsilon_lr_scheduler = None
+
         # 训练进度追踪 (用于 CFG 权重自适应调度)
         self.training_progress = 0.0
 
@@ -57,6 +63,10 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
         self.initial_ratio_error_threshold = 1e-5  # 覆盖父类的 1e-6
         log.info(f"Dual-Stream CFG: weight={self.cfg_weight}, schedule={self.cfg_weight_schedule}, freeze_prior={self.freeze_prior}")
         log.info(f"Prior unfreeze: schedule={self.unfreeze_prior_schedule}, start_progress={self.unfreeze_start_progress}, lr_scale={self.unfreeze_prior_lr_scale}")
+        log.info(f"Learnable epsilon: enabled={self.learn_epsilon}, lr={self.epsilon_lr}")
+
+        # 重新设置优化器 - 覆盖父类的优化器设置，添加 epsilon 优化器
+        self._setup_optimizer()
 
     @torch.no_grad()
     def get_samples_logprobs(
@@ -160,6 +170,8 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
             self.critic_optimizer.zero_grad()
             if self.prior_optimizer is not None:
                 self.prior_optimizer.zero_grad()
+            if self.epsilon_optimizer is not None:
+                self.epsilon_optimizer.zero_grad()
 
             loss.backward()
 
@@ -174,6 +186,24 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
             if self.max_grad_norm:
                 torch.nn.utils.clip_grad_norm_(self.model.critic.parameters(), self.max_grad_norm)
             self.critic_optimizer.step()
+            # 更新 epsilon (如果可学习) - 在 actor 更新之前，因为不受 warmup 限制
+            # 调试: 每次都打印 epsilon 相关状态
+            # log.info(f"[EPSILON DEBUG] epsilon_optimizer={self.epsilon_optimizer is not None}, "
+            #          f"has_logit={hasattr(self.model, 'epsilon_logit')}, "
+            #          f"learn_epsilon={getattr(self.model, 'learn_epsilon', 'N/A')}")
+            
+            # 更新 epsilon (如果可学习) - 在 actor 更新之前，因为不受 warmup 限制
+            if self.epsilon_optimizer is not None:
+                # 调试: 检查 epsilon 梯度
+                if verbose and hasattr(self.model, 'epsilon_logit'):
+                    eps_grad = self.model.epsilon_logit.grad
+                    if eps_grad is not None:
+                        log.info(f"epsilon_logit grad={eps_grad.item():.6e}, value={self.model.epsilon_logit.item():.4f}, epsilon_t={self.model.epsilon_t:.6f}")
+                    else:
+                        log.warning("epsilon_logit.grad is None!")
+                self.epsilon_optimizer.step()
+            else:
+                log.warning("[EPSILON] epsilon_optimizer is None!")    
 
             # 更新 actor (reward stream)
             if self.itr >= self.n_critic_warmup_itr:
@@ -260,6 +290,9 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
                 "critic_lr_scheduler": self.critic_lr_scheduler.state_dict() if self.critic_lr_scheduler else None,
                 "cfg_weight": self.model.cfg_weight,
                 "training_progress": self.training_progress,
+                # 可学习 epsilon 状态
+                "epsilon_optimizer": self.epsilon_optimizer.state_dict() if self.epsilon_optimizer else None,
+                "epsilon_t": self.model.epsilon_t if self.learn_epsilon else None,
             }
         else:
             data = {
@@ -274,6 +307,9 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
                 "critic_lr_scheduler": self.critic_lr_scheduler.state_dict() if self.critic_lr_scheduler else None,
                 "cfg_weight": self.model.cfg_weight,
                 "training_progress": self.training_progress,
+                # 可学习 epsilon 状态
+                "epsilon_optimizer": self.epsilon_optimizer.state_dict() if self.epsilon_optimizer else None,
+                "epsilon_t": self.model.epsilon_t if self.learn_epsilon else None,
             }
 
         # always save the last model for resume of training
@@ -347,25 +383,134 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
         if 'training_progress' in data.keys():
             self.training_progress = data['training_progress']
 
+        # 恢复 epsilon 优化器状态
+        if self.epsilon_optimizer is not None and 'epsilon_optimizer' in data.keys():
+            self.epsilon_optimizer.load_state_dict(data['epsilon_optimizer'])
+            log.info(f"Loaded epsilon optimizer from checkpoint")
+
         log.info(f"Resumed Dual-Stream training: itr={self.itr}, cfg_weight={self.model.cfg_weight}")
 
     def _setup_optimizer(self):
-        """设置优化器 - 只优化 reward stream"""
+        """设置优化器 - 只优化 reward stream，并重新创建学习率调度器"""
+        from util.scheduler import CosineAnnealingWarmupRestarts, WarmupReduceLROnPlateau
+        from util.scheduler_simple import CustomScheduler
+
+        # 从配置获取参数
+        actor_lr = self.cfg.train.actor_lr
+        actor_weight_decay = self.cfg.train.actor_weight_decay
+        critic_lr = self.cfg.train.critic_lr
+        critic_weight_decay = self.cfg.train.critic_weight_decay
+
         # 只优化 actor_reward (激进流)
         self.actor_optimizer = torch.optim.AdamW(
             self.model.actor_reward.parameters(),
-            lr=self.actor_lr,
-            weight_decay=self.actor_weight_decay
+            lr=actor_lr,
+            weight_decay=actor_weight_decay
         )
 
         # Critic 优化器
         self.critic_optimizer = torch.optim.AdamW(
             self.model.critic.parameters(),
-            lr=self.critic_lr,
-            weight_decay=self.critic_weight_decay
+            lr=critic_lr,
+            weight_decay=critic_weight_decay
         )
 
-        log.info(f"Optimizer setup: actor_reward lr={self.actor_lr}, critic lr={self.critic_lr}")
+        # 重新创建 Actor 学习率调度器（绑定到新的优化器）
+        if self.actor_lr_type == "cosine":
+            self.actor_lr_scheduler = CosineAnnealingWarmupRestarts(
+                self.actor_optimizer,
+                first_cycle_steps=self.cfg.train.actor_lr_scheduler.first_cycle_steps,
+                cycle_mult=1.0,
+                max_lr=actor_lr,
+                min_lr=self.cfg.train.actor_lr_scheduler.min_lr,
+                warmup_steps=self.cfg.train.actor_lr_scheduler.warmup_steps,
+                gamma=1.0,
+            )
+        elif self.actor_lr_type == "plateau":
+            self.actor_lr_scheduler = WarmupReduceLROnPlateau(
+                self.actor_optimizer,
+                warmup_steps=self.cfg.train.actor_lr_scheduler.warmup_steps,
+                target_lr=actor_lr,
+                mode='max',
+                min_lr=self.cfg.train.actor_lr_scheduler.min_lr,
+                factor=0.6,
+                patience=4,
+                threshold=20,
+                verbose=True
+            )
+        elif self.actor_lr_type == 'constant_warmup':
+            self.actor_lr_scheduler = CustomScheduler(
+                self.actor_optimizer,
+                'constant_warmup',
+                min=self.cfg.train.actor_lr_scheduler.min_lr,
+                warmup_steps=self.cfg.train.actor_lr_scheduler.warmup_steps,
+                max=actor_lr
+            )
+        elif self.actor_lr_type == 'cosine_custom':
+            self.actor_lr_scheduler = CustomScheduler(
+                self.actor_optimizer,
+                schedule_type='cosine',
+                max=actor_lr,
+                hold_steps=self.cfg.train.actor_lr_scheduler.hold_steps,
+                anneal_steps=self.cfg.train.actor_lr_scheduler.anneal_steps,
+                min=self.cfg.train.actor_lr_scheduler.min_lr
+            )
+
+        # 重新创建 Critic 学习率调度器（绑定到新的优化器）
+        if self.critic_lr_type == "cosine":
+            self.critic_lr_scheduler = CosineAnnealingWarmupRestarts(
+                self.critic_optimizer,
+                first_cycle_steps=self.cfg.train.critic_lr_scheduler.first_cycle_steps,
+                cycle_mult=1.0,
+                max_lr=critic_lr,
+                min_lr=self.cfg.train.critic_lr_scheduler.min_lr,
+                warmup_steps=self.cfg.train.critic_lr_scheduler.warmup_steps,
+                gamma=1.0,
+            )
+        elif self.critic_lr_type == "plateau":
+            self.critic_lr_scheduler = WarmupReduceLROnPlateau(
+                self.critic_optimizer,
+                warmup_steps=self.cfg.train.critic_lr_scheduler.warmup_steps,
+                target_lr=critic_lr,
+                mode='max',
+                min_lr=self.cfg.train.critic_lr_scheduler.min_lr,
+                factor=0.6,
+                patience=4,
+                threshold=20,
+                verbose=True
+            )
+        elif self.critic_lr_type == 'constant_warmup':
+            self.critic_lr_scheduler = CustomScheduler(
+                self.critic_optimizer,
+                'constant_warmup',
+                min=self.cfg.train.critic_lr_scheduler.min_lr,
+                warmup_steps=self.cfg.train.critic_lr_scheduler.warmup_steps,
+                max=critic_lr
+            )
+        elif self.critic_lr_type == 'cosine_custom':
+            self.critic_lr_scheduler = CustomScheduler(
+                self.critic_optimizer,
+                schedule_type='cosine',
+                max=critic_lr,
+                hold_steps=self.cfg.train.critic_lr_scheduler.hold_steps,
+                anneal_steps=self.cfg.train.critic_lr_scheduler.anneal_steps,
+                min=self.cfg.train.critic_lr_scheduler.min_lr
+            )
+
+        # Epsilon 优化器 (如果可学习)
+        if self.learn_epsilon:
+            epsilon_params = self.model.get_epsilon_params()
+            if len(epsilon_params) > 0:
+                self.epsilon_optimizer = torch.optim.AdamW(
+                    epsilon_params,
+                    lr=self.epsilon_lr
+                )
+                log.info(f"Epsilon optimizer created with lr={self.epsilon_lr}")
+            else:
+                log.warning("learn_epsilon=True but no epsilon parameters found!")
+
+        log.info(f"Optimizer setup: actor_reward lr={actor_lr}, critic lr={critic_lr}")
+        log.info(f"Actor LR scheduler: {self.actor_lr_type}, Critic LR scheduler: {self.critic_lr_type}")
         log.info(f"Prior stream is {'frozen' if self.freeze_prior else 'trainable'}")
 
     def _update_prior_unfreeze_state(self, verbose=True) -> dict:
@@ -446,3 +591,4 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
 
                 if self.prior_lr_scheduler is not None:
                     self.prior_lr_scheduler.step()
+

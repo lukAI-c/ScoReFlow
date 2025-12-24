@@ -112,8 +112,7 @@ class ScoreFunction:
         epsilon_min: float = 0.01,
         training_progress: float = 0.0,
         decay_rate: float = 2.0,
-        adaptive_epsilon: float = None,
-        gamma: float = 1.0
+        adaptive_epsilon: float = None
     ) -> float:
         """
         Compute epsilon value at time t based on schedule.
@@ -143,15 +142,13 @@ class ScoreFunction:
             epsilon_t: epsilon at current time step
         """
         # 限幅
-        if t > 0.99:
+        if t > 0.95:
             return 0.0
         
         if schedule == 'constant':
             return epsilon_0
         elif schedule == 'linear_decay':
             return max(epsilon_min, epsilon_0 * (1 - t))
-        elif schedule == 'linear_decay_gamma':
-            return max(epsilon_min, epsilon_0 * (1 - t) ** gamma)
         elif schedule == 'cosine':
             return max(epsilon_min, epsilon_0 * 0.5 * (1 + math.cos(math.pi * t)))
         elif schedule == 'sqrt_decay':
@@ -244,7 +241,6 @@ class ScoreFunction:
         return [
             'constant',
             'linear_decay',
-            'linear_decay_gamma',
             'cosine',
             'sqrt_decay',
             'exponential_decay',
@@ -294,8 +290,24 @@ class ScoreFunctionMixin:
         self,
         t: float,
         training_progress: float = 0.0
-    ) -> float:
-        """Get epsilon at time t using unified ScoreFunction class."""
+    ):
+        """
+        Get epsilon at time t using unified ScoreFunction class.
+
+        Returns:
+            float or Tensor: epsilon value at time t
+
+        Note:
+            子类可以覆盖此方法以返回 Tensor (用于可学习 epsilon)
+            默认实现返回 float (用于固定 epsilon)
+        """
+        # 检查是否有可学习的 epsilon_logit 参数
+        # if hasattr(self, 'epsilon_logit') and hasattr(self, '_get_epsilon_value'):
+        #     # 使用子类的可学习 epsilon 实现
+        #     # 这种情况下子类应该覆盖此方法
+        #     print("Using adaptive epsilon PASS.............................................")
+        #     pass
+
         adaptive_eps = getattr(self, 'adaptive_epsilon', None)
         if adaptive_eps is not None and hasattr(adaptive_eps, 'item'):
             adaptive_eps = adaptive_eps.item()
@@ -307,8 +319,7 @@ class ScoreFunctionMixin:
             epsilon_min=getattr(self, 'epsilon_min', 0.01),
             training_progress=training_progress,
             decay_rate=getattr(self, 'epsilon_decay_rate', 2.0),
-            adaptive_epsilon=adaptive_eps,
-            gamma=getattr(self, 'gamma', 1.0)
+            adaptive_epsilon=adaptive_eps
         )
 
     def sde_update(
@@ -322,3 +333,4 @@ class ScoreFunctionMixin:
     ) -> Tensor:
         """Perform SDE step using unified ScoreFunction class."""
         return ScoreFunction.sde_step(x, velocity, score, epsilon, dt, stochastic)
+

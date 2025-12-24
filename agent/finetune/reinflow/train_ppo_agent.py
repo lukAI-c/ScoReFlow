@@ -596,7 +596,13 @@ class TrainPPOAgent(TrainAgent):
         loss_info = ""
         csv_loss_values = ",,,,"  # loss, pg_loss, value_loss, entropy_loss, approx_kl, clip_frac
         if not self.eval_mode and hasattr(self, 'train_ret_dict'):
-            loss_info = f"  Loss: {self.train_ret_dict.get('loss', 0):.4e}, PG Loss: {self.train_ret_dict.get('pg loss', 0):.4e}, Value Loss: {self.train_ret_dict.get('value loss', 0):.4e}"
+            entropy_loss_val = self.train_ret_dict.get('entropy_loss', 0)
+            if hasattr(entropy_loss_val, 'item'):
+                entropy_loss_val = entropy_loss_val.item()
+            loss_info = (f"  Loss: {self.train_ret_dict.get('loss', 0):.4e}, "
+            f"PG Loss: {self.train_ret_dict.get('pg loss', 0):.4e}, "
+            f"Value Loss: {self.train_ret_dict.get('value loss', 0):.4e}, "
+            f"Entropy Loss: {entropy_loss_val:.4e}")
             csv_loss_values = f"{self.train_ret_dict.get('loss', '')},{self.train_ret_dict.get('pg loss', '')},{self.train_ret_dict.get('value loss', '')},{self.train_ret_dict.get('entropy_loss', '')},{self.train_ret_dict.get('approx kl', '')},{self.train_ret_dict.get('clip_frac', '')}"
         
         # 写入文本文件（人类可读格式）

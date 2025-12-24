@@ -29,6 +29,7 @@ cond_steps: 1
 img_cond_steps: 1
 
 denoising_steps: 100 # fake
+ft_denoising_steps: 0
 
 n_steps: 300  # each episode takes max_episode_steps / act_steps steps
 render_num: 0
