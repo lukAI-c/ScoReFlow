@@ -4,7 +4,7 @@
 """
 Dual-Stream Score Editing PPO Flow Agent
 
-核心创新: 
+核心创新:
     1. 保守流 (Prior Stream): 锚定数据流形，提供 v_uncond
     2. 激进流 (Reward Stream): 探索高奖励区域，提供 v_cond
     3. CFG 引导: v_guided = v_prior + w * (v_reward - v_prior)
@@ -19,7 +19,10 @@ from tqdm import tqdm as tqdm
 import numpy as np
 import torch
 from agent.finetune.reinflow.train_ppo_flow_agent_score import TrainPPOFlowAgent
+from agent.finetune.reinflow.train_ppo_flow_img_agent_score import TrainPPOImgFlowAgent
 from model.flow.ft_ppo.ppoflow_dual_stream import DualStreamPPOFlow
+from model.common.modules import RandomShiftsAug
+from agent.finetune.reinflow.buffer import PPOFlowImgBuffer, PPOFlowImgBufferGPU
 
 
 class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
@@ -150,8 +153,8 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
             if self.target_kl and self.lr_schedule == 'adaptive_kl':
                 self.update_lr_adaptive_kl(self.approx_kl)
 
-            loss = pg_loss + entropy_loss * self.ent_coef + v_loss * self.vf_coef + bc_loss * self.bc_coeff
-
+            # loss = pg_loss + entropy_loss * self.ent_coef + v_loss * self.vf_coef + bc_loss * self.bc_coeff
+            loss = pg_loss + v_loss * self.vf_coef + bc_loss * self.bc_coeff
             clipfracs_list.append(clipfrac)
             noise_std_list.append(noise_std)
 
@@ -446,3 +449,296 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
 
                 if self.prior_lr_scheduler is not None:
                     self.prior_lr_scheduler.step()
+
+
+class TrainPPOImgFlowAgentDualStream(TrainPPOImgFlowAgent, TrainPPOFlowDualStreamAgent):
+    """
+    Image-based Dual-Stream Score Editing PPO Flow Agent
+
+    结合图像输入处理和 Dual-Stream CFG 引导机制。
+    用于 robomimic 等需要视觉输入的任务。
+
+    继承顺序: TrainPPOImgFlowAgent (图像处理), TrainPPOFlowDualStreamAgent (Dual-Stream)
+    """
+
+    def __init__(self, cfg):
+        # 使用 TrainPPOFlowDualStreamAgent 的初始化
+        TrainPPOFlowDualStreamAgent.__init__(self, cfg)
+
+        # 图像相关配置 (从 TrainPPOImgFlowAgent)
+        self.augment = cfg.train.augment
+        if self.augment:
+            self.aug = RandomShiftsAug(pad=4)
+
+        # 放宽初始 ratio 误差阈值 (图像任务 + Dual-Stream 架构)
+        self.initial_ratio_error_threshold = 1e-4
+
+        # 设置观测维度
+        shape_meta = cfg.shape_meta
+        self.obs_dims = {k: shape_meta.obs[k]["shape"] for k in shape_meta.obs}
+
+        # 梯度累积
+        self.grad_accumulate = cfg.train.grad_accumulate
+        self.verbose = cfg.train.get('verbose', False)
+        self.buffer_device = self.device
+        self.minibatch_duplicate_multiplier = 5
+        self.skip_initial_eval = False
+        self.use_early_stop = False
+        self.fix_nextvalue_augment_bug = True
+
+        log.info(f"TrainPPOImgFlowAgentDualStream initialized for robomimic with image input")
+
+    # 使用 TrainPPOImgFlowAgent 的 buffer 初始化
+    def init_buffer(self):
+        TrainPPOImgFlowAgent.init_buffer(self)
+
+    # 使用 Dual-Stream 的采样方法
+    @torch.no_grad()
+    def get_samples(self,
+                    cond: dict,
+                    ret_device='cpu',
+                    save_chains=True,
+                    normalize_denoising_horizon=False,
+                    normalize_act_space_dimension=False,
+                    clip_intermediate_actions=True,
+                    account_for_initial_stochasticity=True):
+        """使用 Dual-Stream CFG 引导采样 (不返回 logprob)"""
+        if save_chains:
+            action_samples, chains_venv = self.model.get_actions(
+                cond,
+                eval_mode=self.eval_mode,
+                save_chains=save_chains,
+                normalize_denoising_horizon=normalize_denoising_horizon,
+                normalize_act_space_dimension=normalize_act_space_dimension,
+                clip_intermediate_actions=clip_intermediate_actions,
+                account_for_initial_stochasticity=account_for_initial_stochasticity,
+                training_progress=self.training_progress,
+                ret_logprob=False
+            )
+            return action_samples.cpu().numpy(), chains_venv.cpu().numpy() if ret_device == 'cpu' else chains_venv
+        else:
+            action_samples = self.model.get_actions(
+                cond,
+                eval_mode=self.eval_mode,
+                save_chains=save_chains,
+                normalize_denoising_horizon=normalize_denoising_horizon,
+                normalize_act_space_dimension=normalize_act_space_dimension,
+                clip_intermediate_actions=clip_intermediate_actions,
+                account_for_initial_stochasticity=account_for_initial_stochasticity,
+                training_progress=self.training_progress,
+                ret_logprob=False
+            )
+            return action_samples.cpu().numpy()
+
+    def run(self):
+        """主训练循环 - 结合图像处理和 Dual-Stream"""
+        log.info("=" * 60)
+        log.info("Starting Image-based Dual-Stream PPO Flow Training")
+        log.info(f"CFG weight: {self.cfg_weight}, schedule: {self.cfg_weight_schedule}")
+        log.info(f"Prior stream frozen: {self.freeze_prior}")
+        log.info("=" * 60)
+
+        # 使用 TrainPPOImgFlowAgent 的 run 逻辑
+        self.init_buffer()
+        self.prepare_run()
+        self.buffer.reset()
+        if self.resume:
+            self.resume_training()
+
+        while self.itr < self.n_train_itr:
+            self.prepare_video_path()
+            self.set_model_mode()
+            self.reset_env(buffer_device=self.buffer_device)
+            self.buffer.update_full_obs()
+
+            for step in tqdm(range(self.n_steps)) if self.verbose else range(self.n_steps):
+                if not self.verbose and step % 100 == 0:
+                    print(f"Processed {step} of {self.n_steps}")
+
+                with torch.no_grad():
+                    # 图像输入
+                    cond = {
+                        key: torch.from_numpy(self.prev_obs_venv[key])
+                        .float()
+                        .to(self.device)
+                        for key in self.obs_dims
+                    }
+
+                    action_samples, chains_venv = self.get_samples(
+                        cond=cond,
+                        ret_device=self.buffer_device,
+                        normalize_denoising_horizon=self.normalize_denoising_horizon,
+                        normalize_act_space_dimension=self.normalize_act_space_dim,
+                        clip_intermediate_actions=self.clip_intermediate_actions,
+                        account_for_initial_stochasticity=self.account_for_initial_stochasticity
+                    )
+
+                # Apply multi-step action
+                action_venv = action_samples[:, :self.act_steps]
+                obs_venv, reward_venv, terminated_venv, truncated_venv, info_venv = self.venv.step(action_venv)
+
+                self.buffer.add(step, self.prev_obs_venv, chains_venv, reward_venv, terminated_venv, truncated_venv)
+                self.prev_obs_venv = obs_venv
+                self.cnt_train_step += self.n_envs * self.act_steps if not self.eval_mode else 0
+
+            self.buffer.summarize_episode_reward()
+            if not self.eval_mode:
+                self.buffer: PPOFlowImgBufferGPU
+                self.buffer.update_img(obs_venv, self.model)
+                self.agent_update(verbose=self.verbose)
+
+            self.log()
+            self.update_lr()
+            self.adjust_finetune_schedule()
+            self.save_model()
+
+            self.itr += 1
+
+            if self.use_early_stop and (self.buffer.success_rate < 0.05 or self.buffer.avg_episode_reward < 2.0):
+                log.info(f"Finetuning failed. success_rate={self.buffer.success_rate*100:.2f}%, avg_episode_reward={self.buffer.avg_episode_reward:.2f}")
+                exit()
+
+            self.clear_cache()
+            self.inspect_memory()
+
+    def agent_update(self, verbose=True):
+        """Dual-Stream agent update with gradient accumulation"""
+        # 更新训练进度
+        self.training_progress = min(1.0, self.itr / max(1, self.n_train_itr))
+
+        # 逐步解冻保守流
+        unfreeze_info = self._update_prior_unfreeze_state(verbose)
+
+        clipfracs_list = []
+        noise_std_list = []
+        actor_norm = 0.0
+        critic_norm = 0.0
+        actor_prior_norm = 0.0
+
+        for update_epoch, batch_id, minibatch in (
+            self.minibatch_generator() if not self.repeat_samples
+            else self.minibatch_generator_repeat()
+        ):
+            self.model: DualStreamPPOFlow
+
+            obs, chains, returns, oldvalues, advantages, oldlogprobs = minibatch
+
+            pg_loss, entropy_loss, v_loss, bc_loss, \
+            clipfrac, approx_kl, ratio, \
+            oldlogprob_min, oldlogprob_max, oldlogprob_std, \
+            newlogprob_min, newlogprob_max, newlogprob_std, \
+            noise_std, Q_values = self.model.loss(
+                obs, chains, returns, oldvalues, advantages, oldlogprobs,
+                use_bc_loss=self.use_bc_loss,
+                bc_loss_type=self.bc_loss_type,
+                normalize_denoising_horizon=self.normalize_denoising_horizon,
+                normalize_act_space_dimension=self.normalize_act_space_dim,
+                verbose=verbose,
+                clip_intermediate_actions=self.clip_intermediate_actions,
+                account_for_initial_stochasticity=self.account_for_initial_stochasticity,
+                training_progress=self.training_progress
+            )
+
+            self.approx_kl = approx_kl
+            if verbose:
+                log.info(f"update_epoch={update_epoch}/{self.update_epochs}, batch_id={batch_id}, "
+                        f"ratio={ratio:.3f}, clipfrac={clipfrac:.3f}, approx_kl={self.approx_kl:.2e}, "
+                        f"cfg_weight={self.model.cfg_weight:.3f}")
+
+            if update_epoch == 0 and batch_id == 0 and np.abs(ratio - 1.00) > self.initial_ratio_error_threshold:
+                log.warning(f"Warning: ratio={ratio} not 1.00 at update_epoch=0, batch_id=0!")
+
+            if self.target_kl and self.lr_schedule == 'adaptive_kl':
+                self.update_lr_adaptive_kl(self.approx_kl)
+
+            loss = pg_loss + entropy_loss * self.ent_coef + v_loss * self.vf_coef + bc_loss * self.bc_coeff
+
+            clipfracs_list.append(clipfrac)
+            noise_std_list.append(noise_std)
+
+            loss.backward()
+
+            # Gradient accumulation
+            if (batch_id + 1) % self.grad_accumulate == 0:
+                actor_norm = torch.nn.utils.clip_grad_norm_(self.model.actor_reward.parameters(), max_norm=float('inf'))
+                actor_prior_norm = torch.nn.utils.clip_grad_norm_(self.model.actor_prior.parameters(), max_norm=float('inf'))
+                critic_norm = torch.nn.utils.clip_grad_norm_(self.model.critic.parameters(), max_norm=float('inf'))
+
+                if verbose:
+                    log.info(f"before clipping: actor_reward_norm={actor_norm:.2e}, critic_norm={critic_norm:.2e}, actor_prior_norm={actor_prior_norm:.2e}")
+
+                # 更新 critic
+                if self.max_grad_norm:
+                    torch.nn.utils.clip_grad_norm_(self.model.critic.parameters(), self.max_grad_norm)
+                self.critic_optimizer.step()
+
+                # 更新 actor (reward stream)
+                if self.itr >= self.n_critic_warmup_itr:
+                    if self.max_grad_norm:
+                        torch.nn.utils.clip_grad_norm_(self.model.actor_reward.parameters(), self.max_grad_norm)
+                    self.actor_optimizer.step()
+
+                    # 同时更新 prior (如果已解冻)
+                    self._update_prior_optimizer()
+
+                # 释放梯度累积
+                self.actor_optimizer.zero_grad()
+                self.critic_optimizer.zero_grad()
+                if self.prior_optimizer is not None:
+                    self.prior_optimizer.zero_grad()
+
+                log.info(f"run grad update at batch {batch_id}")
+
+        # 记录统计信息
+        clip_fracs = np.mean(clipfracs_list)
+        score_stds = np.mean(noise_std_list)
+        prior_status = self.model.get_prior_freeze_status()
+
+        self.train_ret_dict = {
+            "loss": loss,
+            "pg loss": pg_loss,
+            "value loss": v_loss,
+            "entropy_loss": entropy_loss,
+            "bc_loss": bc_loss,
+            "approx kl": self.approx_kl,
+            "ratio": ratio,
+            "clipfrac": clip_fracs,
+            "explained variance": self.explained_var,
+            "old_logprob_min": oldlogprob_min,
+            "old_logprob_max": oldlogprob_max,
+            "old_logprob_std": oldlogprob_std,
+            "new_logprob_min": newlogprob_min,
+            "new_logprob_max": newlogprob_max,
+            "new_logprob_std": newlogprob_std,
+            "actor_norm": actor_norm,
+            "critic_norm": critic_norm,
+            "actor lr": self.actor_optimizer.param_groups[0]["lr"],
+            "critic lr": self.critic_optimizer.param_groups[0]["lr"],
+            "prior lr": self.prior_optimizer.param_groups[0]["lr"] if self.prior_optimizer else 0.0,
+            "epsilon_t": self.model.epsilon_t,
+            "score_std": score_stds,
+            "Q_values": Q_values,
+            "cfg_weight": self.model.cfg_weight,
+            "training_progress": self.training_progress,
+            "prior_unfrozen_ratio": 1.0 - prior_status['frozen_ratio'],
+        }
+
+    # 使用 TrainPPOImgFlowAgent 的 minibatch_generator_repeat
+    def minibatch_generator_repeat(self):
+        return TrainPPOImgFlowAgent.minibatch_generator_repeat(self)
+
+    # 使用 TrainPPOFlowDualStreamAgent 的 save_model 和 resume_training
+    def save_model(self, only_save_policy_network=False):
+        return TrainPPOFlowDualStreamAgent.save_model(self, only_save_policy_network)
+
+    def resume_training(self):
+        return TrainPPOFlowDualStreamAgent.resume_training(self)
+
+    def _setup_optimizer(self):
+        return TrainPPOFlowDualStreamAgent._setup_optimizer(self)
+
+    def _update_prior_unfreeze_state(self, verbose=True):
+        return TrainPPOFlowDualStreamAgent._update_prior_unfreeze_state(self, verbose)
+
+    def _update_prior_optimizer(self):
+        return TrainPPOFlowDualStreamAgent._update_prior_optimizer(self)

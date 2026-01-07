@@ -16,7 +16,7 @@ MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
     device=cuda:0 \
     sim_device=cuda:0 \
     model.cfg_weight=0.5 \
-    gamma=0.5 \
+    gamma_score=0.5 \
 
 
 echo "Fine-tuning finished."

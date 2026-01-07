@@ -90,6 +90,9 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
                  logprob_debug_recalculate: bool = False,
                  epsilon_schedule: str = 'linear_decay',
                  lamda: float = 1.0,
+                 # 评估时跳过初始化加载，由 load_model_for_eval 统一加载
+                 load_weights_in_init: bool = True,
+                 gamma_score: float = 1.0,
                  ):
         super().__init__()
         self.device = device
@@ -106,6 +109,7 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
         self.epsilon_t: float = epsilon_t
         self.epsilon_schedule: str = epsilon_schedule
         self.lamda = lamda
+        self.gamma_score = gamma_score
         
         # Dual-Stream CFG parameters
         self.cfg_weight = cfg_weight
@@ -134,6 +138,14 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
         # ============== 双流架构 ==============
         # 1. 保守流 (Prior Stream) - 锚定数据流形
         self.actor_prior: FlowMLP = policy
+    
+        # 是否在初始化时加载权重（评估时设为 False，由 load_model_for_eval 统一加载）
+        if load_weights_in_init:
+            self._load_policy(actor_policy_path, self.actor_prior, use_ema=True)
+            log.info("Loaded pretrained weights in __init__")
+        else:
+            log.info("Skipping weight loading in __init__ (will be loaded later)")
+        
         self._load_policy(actor_policy_path, self.actor_prior, use_ema=True)
         if self.freeze_prior:
             for param in self.actor_prior.parameters():
@@ -158,20 +170,68 @@ class DualStreamPPOFlow(nn.Module, ScoreFunctionMixin):
         self._report_network_params()
 
     def _load_policy(self, network_path: str, network: FlowMLP, use_ema: bool = True):
-        """加载预训练策略权重"""
+        """加载预训练策略权重
+
+        支持三种 checkpoint 格式：
+        1. 单个 FlowMLP checkpoint (来自预训练)
+        2. 完整的 DualStreamPPOFlow checkpoint (来自微调)
+        3. 直接的 state_dict
+        """
         if network_path:
             log.info(f"Loading policy from {network_path}")
             model_data = torch.load(network_path, map_location=self.device, weights_only=True)
+
+            # 确定使用哪个 state_dict
             if use_ema and "ema" in model_data:
-                weights = {k.replace("network.", ""): v for k, v in model_data["ema"].items()}
-                log.info("Loaded EMA weights for prior stream")
+                raw_weights = model_data["ema"]
+                log.info("Using EMA weights")
+            elif "model" in model_data:
+                raw_weights = model_data["model"]
+                log.info("Using model weights")
             else:
-                weights = {k.replace("network.", ""): v for k, v in model_data["model"].items()}
-                log.info("Loaded model weights for prior stream")
-            network.load_state_dict(weights)
+                # 直接是 state_dict
+                raw_weights = model_data
+                log.info("Using raw state_dict")
+
+            # 检查是否是 DualStreamPPOFlow checkpoint (包含 actor_prior, actor_reward 等前缀)
+            has_dual_stream_prefix = any(
+                k.startswith(('actor_prior.', 'actor_reward.', 'actor_ft.', 'actor_old.'))
+                for k in raw_weights.keys()
+            )
+
+            if has_dual_stream_prefix:
+                # 从 DualStreamPPOFlow checkpoint 中提取 actor_prior 的权重
+                # 优先使用 actor_prior，如果没有则尝试 actor_reward
+                prefix_to_use = None
+                for prefix in ['actor_prior.', 'actor_reward.', 'actor_ft.']:
+                    if any(k.startswith(prefix) for k in raw_weights.keys()):
+                        prefix_to_use = prefix
+                        break
+
+                if prefix_to_use:
+                    weights = {
+                        k.replace(prefix_to_use, ""): v
+                        for k, v in raw_weights.items()
+                        if k.startswith(prefix_to_use)
+                    }
+                    log.info(f"Extracted weights from DualStream checkpoint using prefix '{prefix_to_use}' ({len(weights)} params)")
+                else:
+                    log.warning("DualStream checkpoint detected but no valid actor prefix found")
+                    weights = raw_weights
+            else:
+                # 单个 FlowMLP checkpoint - 移除 "network." 前缀
+                weights = {k.replace("network.", ""): v for k, v in raw_weights.items()}
+                log.info(f"Loaded single FlowMLP checkpoint ({len(weights)} params)")
+
+            # 加载权重
+            missing, unexpected = network.load_state_dict(weights, strict=False)
+            if missing:
+                log.warning(f"Missing keys when loading policy: {missing[:5]}... (total {len(missing)})")
+            if unexpected:
+                log.warning(f"Unexpected keys when loading policy: {unexpected[:5]}... (total {len(unexpected)})")
+            log.info("Policy weights loaded successfully")
         else:
             log.warning("No policy path provided, using random initialization")
-
     def _report_network_params(self):
         """报告网络参数量"""
         total = sum(p.numel() for p in self.parameters()) / 1e6

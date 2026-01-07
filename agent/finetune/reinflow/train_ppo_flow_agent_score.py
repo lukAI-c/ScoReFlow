@@ -29,6 +29,7 @@ import logging
 log = logging.getLogger(__name__)
 from tqdm import tqdm as tqdm
 import numpy as np
+import pandas as pd
 import torch
 from agent.finetune.reinflow.train_ppo_agent import TrainPPOAgent
 from model.flow.ft_ppo.ppoflow_score import PPOFlow
@@ -178,6 +179,7 @@ class TrainPPOFlowAgent(TrainPPOAgent):
             
             self.log()                                          # diffusion_min_sampling_std
             self.update_lr()
+            self.update_ent_coef_schedule()  # 更新熵系数调度
             self.adjust_finetune_schedule()# update finetune scheduler of ReFlow Policy
             self.save_model()
             self.itr += 1 
@@ -453,7 +455,8 @@ class TrainPPOFlowAgent(TrainPPOAgent):
                 "critic lr": self.critic_optimizer.param_groups[0]["lr"],
                 "epsilon_t": self.model.epsilon_t,           # score-based: epsilon coefficient
                 # "epsilon_schedule": self.model.epsilon_schedule,
-                "score_std": score_stds,                     # score std (|st|)
+                "score_std": score_stds,
+                "gamma": self.model.gamma_score,# score std (|st|)
                 "Q_values": Q_values
             }
     

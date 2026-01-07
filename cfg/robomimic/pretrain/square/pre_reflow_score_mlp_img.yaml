@@ -2,7 +2,7 @@
 # environment and task
 env_suite: robomimic
 env: square
-
+gamma_score: 1
 # future action forecasts
 action_dim: 7
 horizon_steps: 4
@@ -31,7 +31,7 @@ hydra:
 _target_: agent.pretrain.train_reflow_score_agent.TrainReFlowScoreAgent
 name: ${env}_pre_reflow_score_mlp_img_ta${horizon_steps}_td${denoising_steps}
 
-logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/${env}/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}_${seed}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/${env}/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}_gamma${gamma_score}_${seed}
 train_dataset_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/${env}-img/train.npz
 
 # Denoising and score-based parameters
@@ -42,7 +42,7 @@ device: cuda:0
 
 # Score-based exploration parameters
 epsilon_t: 0.1
-epsilon_schedule: linear_decay  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay
+epsilon_schedule: linear_decay_gamma  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay
 use_score_loss: false     # Set to true to add score matching auxiliary loss
 score_loss_weight: 0.1
 
@@ -95,6 +95,7 @@ model:
     horizon_steps: ${horizon_steps}
     action_dim: ${action_dim}
   device: ${device}
+  gamma_score: ${gamma_score}
   horizon_steps: ${horizon_steps}
   action_dim: ${action_dim}
   act_min: -1

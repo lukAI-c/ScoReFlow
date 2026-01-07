@@ -73,6 +73,7 @@ class ReFlowScore(nn.Module, ScoreFunctionMixin):
         epsilon_schedule: str = 'linear_decay',
         lamda: float = 1.0, # defalut 1.0
         randn_clip_value: float = 3.0, # defalut 3.0
+        gamma_score: float = 1.0, # gamma parameter for score function
     ):
         """
         Initialize the ReFlowScore model.
@@ -115,10 +116,11 @@ class ReFlowScore(nn.Module, ScoreFunctionMixin):
         self.epsilon_schedule = epsilon_schedule
         self.lamda = lamda
         self.randn_clip_value = randn_clip_value
+        self.gamma = gamma_score  # gamma parameter for score function
         
         log.info(f"ReFlowScore initialized with epsilon_t={epsilon_t}, "
                  f"epsilon_schedule={epsilon_schedule}, lamda={lamda}, "
-                 f"randn_clip_value={randn_clip_value}")
+                 f"randn_clip_value={randn_clip_value}, gamma={gamma_score}")
 
     def generate_trajectory(self, x1: Tensor, x0: Tensor, t: Tensor) -> Tensor:
         """Generate rectified flow trajectory xt = t * x1 + (1 - t) * x0."""

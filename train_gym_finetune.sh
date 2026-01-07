@@ -11,12 +11,25 @@
 
 # Note: Ensure you have a pre-trained checkpoint or let the script download/use the default one if configured.
 
+# echo "Starting OpenAI Gym Fine-tuning..."
+
+# python script/run.py \
+#     --config-dir=cfg/gym/finetune/walker2d-v2 \
+#     --config-name=ft_ppo_reflow_mlp_dual_stream \
+#     base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/walker2d-medium-v2_pre_reflow_mlp_ta4_td20_seed42/2025-12-10_13-16-15_42/checkpoint/last.pt\
+#     device=cuda:0 \
+
+# echo "Fine-tuning finished."
+
+
 echo "Starting OpenAI Gym Fine-tuning..."
 
 python script/run.py \
-    --config-dir=cfg/gym/finetune/walker2d-v2 \
-    --config-name=ft_ppo_reflow_mlp_dual_stream \
-    base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/walker2d-medium-v2_pre_reflow_mlp_ta4_td20_seed42/2025-12-10_13-16-15_42/checkpoint/last.pt\
+    --config-dir=cfg/gym/finetune/Humanoid-v3 \
+    --config-name=ft_ppo_reflow_mlp_score \
+    base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/Humanoid-medium-v3_pre_reflow_mlp_ta4_td20_seed42/2025-12-26_03-33-44_42/checkpoint/best.pt\
     device=cuda:0 \
+    gamma=1 \
+    +train.ent_coef_schedule_on=false \
 
 echo "Fine-tuning finished."

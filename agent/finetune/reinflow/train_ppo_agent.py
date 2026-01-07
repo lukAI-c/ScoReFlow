@@ -42,6 +42,7 @@ import os
 import numpy as np
 import pickle
 import wandb
+import pandas as pd
 from util.reproducibility import set_seed_everywhere
 ########################################################################
 class TrainPPOAgent(TrainAgent):
@@ -164,6 +165,17 @@ class TrainPPOAgent(TrainAgent):
 
         # Entropy loss coefficient
         self.ent_coef = cfg.train.get("ent_coef", 0.01)
+        self.ent_coef_schedule_on = cfg.train.get("ent_coef_schedule_on", False)
+        
+        if self.ent_coef_schedule_on == True:
+            # Entropy coefficient schedule parameters (方案一：带缓冲的线性衰减)
+            self.ent_coef_schedule = cfg.train.get("ent_coef_schedule", "linear_decay")  # 'constant' or 'linear_decay'
+            self.ent_coef_start = cfg.train.get("ent_coef_start", self.ent_coef)  # 初始熵系数
+            self.ent_coef_end = cfg.train.get("ent_coef_end", 0.001)  # 最终熵系数
+            self.ent_decay_start_itr = cfg.train.get("ent_decay_start_itr", 30)  # 开始衰减的 iteration
+            self.ent_decay_end_itr = cfg.train.get("ent_decay_end_itr", int(cfg.train.n_train_itr * 0.8))  # 结束衰减的 iteration
+        else: 
+            self.ent_coef_schedule = "constant"
 
         # Value loss coefficient
         self.vf_coef = cfg.train.get("vf_coef", 0.5)
@@ -195,6 +207,43 @@ class TrainPPOAgent(TrainAgent):
         self.actor_update_epoch = cfg.train.get('actor_update_epoch',1)
         self.denoising_steps = cfg.get('denoising_steps', 1)  # 1 is for gaussian policy
         self.skip_initial_eval = False 
+    def update_ent_coef_schedule(self):
+        """
+        方案一：带缓冲的线性衰减 (Linear Decay with Warmup & Cooldown)
+
+        训练分为三个阶段：
+        1. 探索期 (Warmup): 保持高熵，让模型先"把路走通"
+        2. 衰减期 (Decay): 线性降低熵权，引导模型收束方差
+        3. 精调期 (Cooldown): 保持低熵（底噪），专注刷分，死磕精度
+
+        Config 参数:
+            ent_coef_schedule: 'constant' 或 'linear_decay'
+            ent_coef_start: 初始熵系数 (默认 0.02)
+            ent_coef_end: 最终熵系数 (默认 0.001)
+            ent_decay_start_itr: 开始衰减的 iteration (默认 50)
+            ent_decay_end_itr: 结束衰减的 iteration (默认 n_train_itr * 0.8)
+        """
+        if self.ent_coef_schedule == 'constant':
+            # 保持不变
+            return
+
+        elif self.ent_coef_schedule == 'linear_decay':
+            # 1. 还没有到衰减时间，保持高熵
+            if self.itr < self.ent_decay_start_itr:
+                self.ent_coef = self.ent_coef_start
+
+            # 2. 已经过了衰减时间，保持低熵
+            elif self.itr >= self.ent_decay_end_itr:
+                self.ent_coef = self.ent_coef_end
+
+            # 3. 正在衰减中 (Linear Interpolation)
+            else:
+                # 计算进度 0.0 -> 1.0
+                progress = (self.itr - self.ent_decay_start_itr) / (self.ent_decay_end_itr - self.ent_decay_start_itr)
+                # 公式: Current = Start - Progress * (Start - End)
+                self.ent_coef = self.ent_coef_start - progress * (self.ent_coef_start - self.ent_coef_end)
+        else:
+            raise ValueError(f"Unsupported ent_coef_schedule: {self.ent_coef_schedule}. Use 'constant' or 'linear_decay'.")
         
     def visualize_lr(self, cfg):
         steps = []
@@ -588,6 +637,100 @@ class TrainPPOAgent(TrainAgent):
             with open(self.result_path, "wb") as f:
                 pickle.dump(self.run_results, f)
                 
+    # def _save_metrics_to_file(self):
+    #     # """保存训练指标到文本文件和 CSV 文件"""
+    #     mode = "eval" if self.eval_mode else "train"
+        
+    #     # 获取损失信息（仅训练模式有）
+    #     loss_info = ""
+    #     csv_loss_values = ",,,,"  # loss, pg_loss, value_loss, entropy_loss, approx_kl, clip_frac
+    #     if not self.eval_mode and hasattr(self, 'train_ret_dict'):
+    #         entropy_loss_val = self.train_ret_dict.get('entropy_loss', 0)
+    #         if hasattr(entropy_loss_val, 'item'):
+    #             entropy_loss_val = entropy_loss_val.item()
+    #         loss_info = (f"  Loss: {self.train_ret_dict.get('loss', 0):.4e}, "
+    #         f"PG Loss: {self.train_ret_dict.get('pg loss', 0):.4e}, "
+    #         f"Value Loss: {self.train_ret_dict.get('value loss', 0):.4e}, "
+    #         f"Entropy Loss: {entropy_loss_val:.4e}")
+    #         csv_loss_values = f"{self.train_ret_dict.get('loss', '')},{self.train_ret_dict.get('pg loss', '')},{self.train_ret_dict.get('value loss', '')},{self.train_ret_dict.get('entropy_loss', '')},{self.train_ret_dict.get('approx kl', '')},{self.train_ret_dict.get('clip_frac', '')}"
+    #     # if not self.eval_mode:
+    #     #     return
+    #     # mode = "eval"
+    #     # 写入文本文件（人类可读格式）
+    #     with open(self.metrics_log_path, 'a') as f:
+    #         f.write(f"[{mode.upper()}] Itr {self.itr} | Step {self.cnt_train_step} | "
+    #                f"Success Rate: {self.buffer.success_rate*100:.2f}% | "
+    #                f"Avg Reward: {self.buffer.avg_episode_reward:.2f} | "
+    #                f"Avg Length: {self.buffer.avg_episode_length:.2f} | "
+    #                f"Actor LR: {self.actor_optimizer.param_groups[0]['lr']:.2e} | "
+    #                f"Critic LR: {self.critic_optimizer.param_groups[0]['lr']:.2e}"
+    #                f"{loss_info}\n")
+    #             # 写入文本文件（人类可读格式）
+    #     # with open(self.metrics_log_path, 'a') as f:
+    #     #     f.write(f"[{mode.upper()}] Itr {self.itr} | Step {self.cnt_train_step} | "
+    #     #            f"Success Rate: {self.buffer.success_rate*100:.2f}% | "
+    #     #            f"Avg Reward: {self.buffer.avg_episode_reward:.2f} | "
+    #     #            f"Avg Length: {self.buffer.avg_episode_length:.2f} | "
+    #     #            f"Actor LR: {self.actor_optimizer.param_groups[0]['lr']:.2e} | "
+    #     #            f"Critic LR: {self.critic_optimizer.param_groups[0]['lr']:.2e}\n")
+        
+    #     # 写入 CSV 文件（便于后续分析和绘图）
+    #     with open(self.metrics_csv_path, 'a') as f:
+    #         f.write(f"{self.itr},{self.cnt_train_step},{mode},"
+    #                f"{self.buffer.success_rate},{self.buffer.avg_episode_reward},"
+    #                f"{self.buffer.avg_best_reward},{self.buffer.avg_episode_length},"
+    #                f"{self.actor_optimizer.param_groups[0]['lr']},"
+    #                f"{self.critic_optimizer.param_groups[0]['lr']},"
+    #                f"{csv_loss_values}\n")
+    #     # with open(self.metrics_csv_path, 'a') as f:
+    #     #     f.write(f"{self.itr},{self.cnt_train_step},{mode},"
+    #     #            f"{self.buffer.success_rate},{self.buffer.avg_episode_reward},"
+    #     #            f"{self.buffer.avg_best_reward},{self.buffer.avg_episode_length},"
+    #     #            f"{self.actor_optimizer.param_groups[0]['lr']},"
+    #     #            f"{self.critic_optimizer.param_groups[0]['lr']}\n")    
+    #         # 同时调用专门的评估CSV保存方法
+    #     self.save_evaluation_to_csv()
+
+    # def save_evaluation_to_csv(self):
+    #     """保存评估结果到CSV文件，格式符合可视化脚本要求"""
+    #     # 准备数据，格式为: Step, [方法名]_[指标]_seed_[种子]_evaluations
+    #     step = self.cnt_train_step
+
+    #     # 构建方法名 (使用 cfg 中的 name 或环境名)
+    #     model_name = getattr(self, 'name', self.env_name)
+
+    #     # 准备数据字典
+    #     data = {
+    #         'Step': [step],
+    #         f'{model_name}_success_rate_seed_{self.seed}_evaluations': [self.buffer.success_rate],
+    #         f'{model_name}_avg_episode_reward_seed_{self.seed}_evaluations': [self.buffer.avg_episode_reward],
+    #         f'{model_name}_avg_best_reward_seed_{self.seed}_evaluations': [self.buffer.avg_best_reward],
+    #         f'{model_name}_avg_episode_length_seed_{self.seed}_evaluations': [self.buffer.avg_episode_length],
+    #         f'{model_name}_std_success_rate_seed_{self.seed}_evaluations': [self.buffer.std_success_rate],
+    #         f'{model_name}_std_episode_reward_seed_{self.seed}_evaluations': [self.buffer.std_episode_reward],
+    #         f'{model_name}_std_best_reward_seed_{self.seed}_evaluations': [self.buffer.std_best_reward],
+    #         f'{model_name}_std_episode_length_seed_{self.seed}_evaluations': [self.buffer.std_episode_length],
+    #     }
+
+    #     # 确保目录存在
+    #     eval_output_dir = os.path.join(self.logdir, 'eval_results')
+    #     os.makedirs(eval_output_dir, exist_ok=True)
+
+    #     # 保存或追加到CSV文件
+    #     csv_path = os.path.join(eval_output_dir, f"{self.env_name}_evaluation.csv")
+    #     df = pd.DataFrame(data)
+
+    #     if os.path.exists(csv_path):
+    #         existing_df = pd.read_csv(csv_path)
+    #         # 检查是否已存在相同Step的数据，如果存在则更新，否则追加
+    #         if step in existing_df['Step'].values:
+    #             existing_df = existing_df[existing_df['Step'] != step]
+    #         df = pd.concat([existing_df, df], ignore_index=True)
+    #         df = df.sort_values('Step').reset_index(drop=True)
+
+    #     df.to_csv(csv_path, index=False)
+    #     log.info(f"Evaluation results saved to {csv_path}")
+    
     def _save_metrics_to_file(self):
         """保存训练指标到文本文件和 CSV 文件"""
         mode = "eval" if self.eval_mode else "train"

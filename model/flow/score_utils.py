@@ -109,7 +109,7 @@ class ScoreFunction:
         t: float,
         epsilon_0: float,
         schedule: str = 'constant',
-        epsilon_min: float = 0.01,
+        epsilon_min: float = 0.01, # epsilon_min最小值
         training_progress: float = 0.0,
         decay_rate: float = 2.0,
         adaptive_epsilon: float = None,
@@ -143,8 +143,8 @@ class ScoreFunction:
             epsilon_t: epsilon at current time step
         """
         # 限幅
-        if t > 0.99:
-            return 0.0
+        # if t > 0.99:
+        #     return 0.0
         
         if schedule == 'constant':
             return epsilon_0
@@ -299,16 +299,18 @@ class ScoreFunctionMixin:
         adaptive_eps = getattr(self, 'adaptive_epsilon', None)
         if adaptive_eps is not None and hasattr(adaptive_eps, 'item'):
             adaptive_eps = adaptive_eps.item()
+        
+        model_gamma=getattr(self, 'gamma_score', 1.0)
 
         return ScoreFunction.get_epsilon(
             t=t,
             epsilon_0=self.epsilon_t,
-            schedule=self.epsilon_schedule,
+            schedule=getattr(self, 'epsilon_schedule', 'linear_decay_gamma'),
             epsilon_min=getattr(self, 'epsilon_min', 0.01),
             training_progress=training_progress,
             decay_rate=getattr(self, 'epsilon_decay_rate', 2.0),
             adaptive_epsilon=adaptive_eps,
-            gamma=getattr(self, 'gamma', 1.0)
+            gamma=model_gamma
         )
 
     def sde_update(

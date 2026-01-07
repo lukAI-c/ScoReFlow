@@ -25,16 +25,19 @@ echo "============================================================"
 # echo "Checkpoint: ${CHECKPOINT_PATH}"
 # echo "CFG Weight: ${CFG_WEIGHT}"
 # echo "Device: ${DEVICE}"
+DENOISING_STEPS="[4]"
 echo "============================================================"
 
 python script/run.py \
     --config-dir=cfg/gym/eval/kitchen-complete-v0 \
     --config-name=eval_dual_stream_mlp \
-    base_policy_path=${REINFLOW_LOG_DIR}/gym/finetune/kitchen-complete-v0_ppo_reflow_mlp_dual_stream_ta4_td4_cfg2.0/2025-12-19_05-09-27_seed42/checkpoint/best.pt \
+    base_policy_path=${REINFLOW_LOG_DIR}/gym/finetune/kitchen-complete-v0_ppo_reflow_mlp_score_ta4_td4/2025-12-24_03-56-00_seed42/checkpoint/best.pt\
     device=cuda:0 \
+    denoising_step_list=$DENOISING_STEPS \
     +render_onscreen=false \
     eval_mode=true \
     load_ema=false \
+    cfg_weight=0.5\
 
 
 echo "Evaluation finished."

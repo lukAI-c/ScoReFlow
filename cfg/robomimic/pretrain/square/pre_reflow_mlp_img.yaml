@@ -35,7 +35,7 @@ logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/${env}/${name}/${now:%Y-%m
 train_dataset_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/${env}-img/train.npz
 
 # 
-denoising_steps: 100
+denoising_steps: 80 # 100
 batch_size: 256
 seed: 42
 device: cuda:3

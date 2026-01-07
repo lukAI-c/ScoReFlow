@@ -1,6 +1,7 @@
 ######################################################################
 env_name: kitchen-complete-v0
 
+gamma_score: 0.5
 # future action forecasts
 action_dim: 9
 horizon_steps: 4
@@ -20,8 +21,8 @@ hydra:
   run:
     dir: ${logdir}
 _target_: agent.finetune.reinflow.train_ppo_flow_agent_score.TrainPPOFlowAgent
-name: ${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}_seed${seed}
-logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}/${now:%Y-%m-%d}_${now:%H-%M-%S}_seed${seed}
+name: ${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}_gamma${gamma_score}_seed${seed}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}/${now:%Y-%m-%d}_${now:%H-%M-%S}_gamma${gamma_score}_seed${seed}
 base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/gym/pretrain/kitchen-complete-v0_pre_reflow_mish_mlp_ta4_td4/2025-05-05_20-13-17_42/checkpoint/state_500.pt
 normalization_path: ${oc.env:REINFLOW_DATA_DIR}/gym/${env_name}/normalization.npz
 resume_path: null
@@ -31,7 +32,7 @@ sim_device: cuda:6
 denoising_steps: 4
 # Score-based exploration parameters
 epsilon_t: 0.1
-epsilon_schedule: linear_decay  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
+epsilon_schedule: linear_decay_gamma  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
 env:
   n_envs: 40
   name: ${env_name}
@@ -123,6 +124,7 @@ model:
   # Score-based exploration parameters
   epsilon_t: ${epsilon_t}
   epsilon_schedule: ${epsilon_schedule}
+  gamma_score: ${gamma_score}
   # Common parameters
   randn_clip_value: 3
   logprob_min: -1.0

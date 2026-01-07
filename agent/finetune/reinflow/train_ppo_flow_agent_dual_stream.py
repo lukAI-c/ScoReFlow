@@ -220,6 +220,7 @@ class TrainPPOFlowDualStreamAgent(TrainPPOFlowAgent):
             "cfg_weight": self.model.cfg_weight,
             "training_progress": self.training_progress,
             "prior_unfrozen_ratio": 1.0 - prior_status['frozen_ratio'],
+            "gamma": self.model.gamma_score,
         }
 
     def run(self):

@@ -360,7 +360,6 @@ class PPOFlow(nn.Module):
             std = torch.clamp(std, min=self.min_sampling_denoising_std)    # each value in [self.min_sampling_denoising_std, self.max_logprob_denoising_std]
             dist = Normal(xt, std)
             if not eval_mode:
-                # print("11111111111111Sampling noise std: {:.3f}".format(std.mean().item()))
                 xt = dist.sample().clamp_(dist.loc - self.randn_clip_value * dist.scale,
                                           dist.loc + self.randn_clip_value * dist.scale).to(self.device)
             

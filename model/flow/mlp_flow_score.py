@@ -469,6 +469,43 @@ class VisionFlowMLP(nn.Module, ScoreFunctionMixin):
         if output_embedding:
             return vel.view(B, Ta, Da), time_emb, cond_encoded
         return vel.view(B, Ta, Da)
+    
+    def sample_action(self, cond: dict, inference_steps: int, clip_intermediate_actions: bool, act_range: List[float], z: Tensor = None, save_chains: bool = False):
+        """
+        Deterministic sampling via Euler integration.
+        When `save_chains` is True, also return the denoising trajectory.
+
+        Args:
+            cond: dict with 'state' and 'rgb' keys
+            inference_steps: number of denoising steps
+            clip_intermediate_actions: whether to clip during sampling
+            act_range: [min, max] for action clipping
+            z: initial noise (optional)
+            save_chains: whether to save trajectory
+        """
+        B = cond['state'].shape[0]
+        device = cond['state'].device
+
+        x_hat: Tensor = z if z is not None else torch.randn(B, self.horizon_steps, self.action_dim, device=device)
+        if save_chains:
+            x_chain = torch.zeros((B, inference_steps + 1, self.horizon_steps, self.action_dim), device=device)
+            x_chain[:, 0] = x_hat
+
+        dt = (1 / inference_steps) * torch.ones_like(x_hat, device=device)
+        steps = torch.linspace(0, 1 - 1 / inference_steps, inference_steps, device=device).repeat(B, 1)
+
+        for i in range(inference_steps):
+            t = steps[:, i]
+            vt = self.forward(x_hat, t, cond)
+            x_hat = x_hat + vt * dt
+            if clip_intermediate_actions or i == inference_steps - 1:
+                x_hat = x_hat.clamp(*act_range)
+            if save_chains:
+                x_chain[:, i + 1] = x_hat
+
+        if save_chains:
+            return x_hat, x_chain
+        return x_hat
 
     # def compute_score(self, action: Tensor, vel: Tensor, time: Tensor) -> Tensor:
     #     """

@@ -77,9 +77,13 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
                  logprob_debug_recalculate,
                  epsilon_schedule='constant',   # epsilon schedule: 'constant', 'linear_decay', 'cosine'
                  lamda = 1, # default: 1
+                 gamma_score = 1.0,
+                 load_weights_in_init: bool = True,
+                 use_ema=True
                  ):
         
         super().__init__()
+        self.gamma_score = gamma_score
         self.device = device
         self.inference_steps = inference_steps          # number of steps for inference.
         # self.ft_denoising_steps = ft_denoising_steps    # could be adjusted
@@ -116,7 +120,9 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
 
         # Load pretrained policy (frozen, for reference)
         self.actor_old: FlowMLP = policy
-        self.load_policy(actor_policy_path, use_ema=True)
+        # self.load_policy(actor_policy_path, use_ema=use_ema)
+        if load_weights_in_init:
+            self.load_policy(actor_policy_path, use_ema=use_ema)
         for param in self.actor_old.parameters():
             param.requires_grad = False
         self.actor_old.to(self.device)
@@ -290,8 +296,9 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
         import numpy as np
 
         logprob = 0.0
-        joint_entropy = 0.0
-        entropy_rate_est = 0.0
+        # 修改熵loss删除
+        # joint_entropy = 0.0
+        # entropy_rate_est = 0.0
         logprob_steps = 0
 
         B = x_chain.shape[0]
@@ -303,12 +310,15 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
         )
         logprob_init = init_dist.log_prob(x_chain[:, 0].reshape(B, -1)).sum(-1)
 
-        if get_entropy:
-            entropy_init = init_dist.entropy().sum(-1)
+        # 修改熵loss删除
+        # if get_entropy:
+        #     entropy_init = init_dist.entropy().sum(-1)
+        
         if account_for_initial_stochasticity:
             logprob += logprob_init
-            if get_entropy:
-                joint_entropy += entropy_init
+            # 修改熵loss删除
+            # if get_entropy:
+            #     joint_entropy += entropy_init
             logprob_steps += 1
 
         # Transition probabilities using score-based SDE
@@ -358,19 +368,30 @@ class PPOFlow(nn.Module, ScoreFunctionMixin):
             logprob_trans = trans_dist.log_prob(xt_next).sum(-1)
             logprob += logprob_trans
 
-            if get_entropy:
-                entropy_trans = trans_dist.entropy().sum(-1)
-                joint_entropy += entropy_trans
+            # 修改熵loss删除
+            # if get_entropy:
+            #     entropy_trans = trans_dist.entropy().sum(-1)
+            #     joint_entropy += entropy_trans
 
             logprob_steps += 1
 
         if self.logprob_debug_recalculate:
             log.info(f"logprob_init={logprob_init.mean().item():.3f}, logprob_total={logprob.mean().item():.3f}")
 
+        # === 核心修改：使用 -logprob 作为熵的蒙特卡洛估计 ===
+        # 根据熵的定义：H(π(·|s)) = -E_{a~π}[log π(a|s)]
+        # 我们用采样得到的 -logprob 来近似熵：H_est ≈ -logprob
+        # 这样，在 PPO Loss 中：L = L_clip + c_ent * H = L_clip - c_ent * logprob
+        # 这使得 entropy bonus 鼓励网络降低 logprob（即让概率分布更"扁平"）
         if get_entropy:
-            entropy_rate_est = joint_entropy / logprob_steps
+            #修改熵loss删除
+            # entropy_rate_est = joint_entropy / logprob_steps 
+            entropy_rate_est = -logprob  # shape: (B,)
         if normalize_denoising_horizon:
             logprob = logprob / logprob_steps
+            # 修改熵loss增加
+            if get_entropy:
+                entropy_rate_est = entropy_rate_est / logprob_steps
         if normalize_act_space_dimension:
             logprob = logprob / self.act_dim_total
             if get_entropy:

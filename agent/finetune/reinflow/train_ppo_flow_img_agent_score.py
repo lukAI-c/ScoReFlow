@@ -202,6 +202,7 @@ class TrainPPOImgFlowAgent(TrainPPOFlowAgent):
             
             self.log()
             self.update_lr()
+            self.update_ent_coef_schedule()  # 更新熵系数调度
             self.adjust_finetune_schedule()# update finetune scheduler of ReFlow Policy
             self.save_model()
                               
@@ -250,6 +251,7 @@ class TrainPPOImgFlowAgent(TrainPPOFlowAgent):
                 self.update_lr_adaptive_kl(self.approx_kl)
             
             loss = pg_loss + entropy_loss * self.ent_coef + v_loss * self.vf_coef + bc_loss * self.bc_coeff
+            # loss = pg_loss + v_loss * self.vf_coef + bc_loss * self.bc_coeff # 不加熵loss
             
             clipfracs_list += [clipfrac]
             noise_std_list += [noise_std]

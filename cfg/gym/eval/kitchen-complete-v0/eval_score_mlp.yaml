@@ -1,0 +1,118 @@
+# Score-based PPO Flow Evaluation Config for Kitchen-Complete
+# 用于评估基于 Score 函数的 PPO Flow 微调模型
+#
+# 核心公式: dxt = [bt(xt) + εt·st(xt)] dt + √(2εt) dWt
+# 其中 st(x) = (t * bt(x) - x) / (1 - t) 为分数函数
+#
+# 使用方法:
+#   python script/run.py --config-dir=cfg/gym/eval/kitchen-complete-v0 --config-name=eval_score_mlp \
+#       base_policy_path=<your_checkpoint_path>
+#
+defaults:
+  - _self_
+hydra:
+  run:  
+    dir: ${logdir}
+
+_target_: agent.eval.eval_reflow_agent_score.EvalScoreAgent
+
+name: ${env_name}_eval_score_mlp_ta${horizon_steps}_td${denoising_steps}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/eval/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}_${seed}
+
+# ============ 模型路径 (必须设置) ============
+base_policy_path: null
+normalization_path: ${oc.env:REINFLOW_DATA_DIR}/gym/${env_name}/normalization.npz
+
+seed: 42
+device: cuda:0
+sim_device: cuda:0
+
+# ============ 环境参数 ============
+env_name: kitchen-complete-v0
+obs_dim: 60
+action_dim: 9
+
+# ============ 模型参数 ============
+denoising_steps: 4
+denoising_step_list: [4]
+cond_steps: 1
+horizon_steps: 4
+act_steps: 4
+
+# ============ Score-based 特定参数 ============
+# epsilon_t: 评估时通常设为 0 (确定性采样) 或小值 (少量随机性)
+epsilon_t: 0.0
+epsilon_schedule: constant
+gamma_score: 1.0
+load_ema: false
+
+# ============ 评估设置 ============
+batch_size: 128
+n_steps: 280
+render_num: 0
+
+# ============ 环境配置 ============
+env:
+  n_envs: 40
+  name: ${env_name}
+  max_episode_steps: 280
+  reset_at_iteration: false
+  save_video: false
+  best_reward_threshold_for_success: 4.0
+  wrappers:
+    mujoco_locomotion_lowdim:
+      normalization_path: ${normalization_path}
+    multi_step:
+      n_obs_steps: ${cond_steps}
+      n_action_steps: ${act_steps}
+      max_episode_steps: ${env.max_episode_steps}
+      reset_within_step: true
+
+# ============ 模型架构 (与训练时一致) ============
+model:
+  _target_: model.flow.ft_ppo.ppoflow_score.PPOFlow
+  device: ${device}
+  use_ema: ${load_ema}
+  load_weights_in_init: false  # 评估时不在初始化时加载，由 load_model_for_eval 统一加载
+  policy:
+    _target_: model.flow.mlp_flow_score.FlowMLP
+    horizon_steps: ${horizon_steps}
+    action_dim: ${action_dim}
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+    time_dim: 16
+    mlp_dims: [256, 256, 256]
+    cond_mlp_dims: [128, 32]
+    activation_type: Mish
+    out_activation_type: Identity
+    use_layernorm: false
+    residual_style: true
+  critic:
+    _target_: model.common.critic.CriticObs
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+    mlp_dims: [256, 256, 256]
+    activation_type: Mish
+    residual_style: true
+  actor_policy_path: ${base_policy_path}
+  act_dim: ${action_dim}
+  horizon_steps: ${horizon_steps}
+  act_min: -1
+  act_max: 1
+  obs_dim: ${obs_dim}
+  cond_steps: ${cond_steps}
+  inference_steps: ${denoising_steps}
+  # Score-based parameters
+  epsilon_t: ${epsilon_t}
+  epsilon_schedule: ${epsilon_schedule}
+  gamma_score: ${gamma_score}
+  # Common parameters
+  randn_clip_value: 3
+  logprob_min: -1.0
+  logprob_max: 1.0
+  clip_ploss_coef: 0.01
+  clip_ploss_coef_base: 0.01
+  clip_ploss_coef_rate: 3
+  clip_vloss_coef: null
+  denoised_clip_value: 1.0
+  logprob_debug_sample: false
+  logprob_debug_recalculate: false
+

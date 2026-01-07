@@ -40,10 +40,11 @@ act_steps: 4
 cfg_weight: 1.5
 eval_mode: true
 load_ema: false
+eval_training_progress: 1
 
 # ============ Trust Region 参数 ============
-trust_ratio: 0.5
-use_direction_constraint: false
+# trust_ratio: 0.5
+# use_direction_constraint: false
 
 # Score-based exploration (评估时关闭)
 epsilon_t: 0.0
@@ -78,8 +79,8 @@ model:
   cfg_weight: ${cfg_weight}
   cfg_weight_schedule: constant
   freeze_prior: true
-  trust_ratio: ${trust_ratio}
-  use_direction_constraint: ${use_direction_constraint}
+  # trust_ratio: ${trust_ratio}
+  # use_direction_constraint: ${use_direction_constraint}
   policy:
     _target_: model.flow.mlp_flow_score.FlowMLP
     horizon_steps: ${horizon_steps}
@@ -99,7 +100,7 @@ model:
     activation_type: Mish
     residual_style: true
   actor_policy_path: ${base_policy_path}
-  load_weights_in_init: false  # 评估时不在初始化时加载权重，在 load_model_for_eval 中加载
+  # load_weights_in_init: false  # 评估时不在初始化时加载权重，在 load_model_for_eval 中加载
   act_dim: ${action_dim}
   horizon_steps: ${horizon_steps}
   act_min: -1

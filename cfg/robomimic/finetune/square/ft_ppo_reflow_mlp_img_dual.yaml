@@ -4,6 +4,7 @@
 
 env_suite: robomimic
 env_name: square
+gamma_score: 1
 
 obs_dim: 9
 cond_steps: 1
@@ -21,7 +22,7 @@ hydra:
 
 _target_: agent.finetune.reinflow.train_ppo_flow_img_agent_dual_stream.TrainPPOImgFlowAgentDualStream
 
-name: ${env_name}_dual_stream_safe_cfg_lr_fix_${seed}
+name: ${env_name}_dual_stream_safe_cfg_lr_fix_gamma${gamma_score}_${seed}
 logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/finetune/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
 base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/square/ReFlow/state_2000.pt
 resume_path: null
@@ -36,23 +37,23 @@ sim_device: cuda:0
 # Flow Parameters
 ###################################
 # 建议降低步数以提高 PPO 采样效率，前提是预训练使用了 ReFlow/OT-CFM
-denoising_steps: 8  
+denoising_steps: 1  
 
 # Score-based SDE parameters
 epsilon_t: 0.1  # 稍微降低噪声，依赖 CFG 进行引导
-epsilon_schedule: linear_decay 
+epsilon_schedule: linear_decay_gamma 
 lamda: 1.0
 
 ###################################
 # Dual-Stream CFG Parameters (CRITICAL CHANGES)
 ###################################
 # 1. 采用“安全引导”策略：先插值(0.3)保证不摔倒，后外推(1.5)追求高分
-cfg_weight: 1.5  # 这是最终权重
-cfg_weight_schedule: linear_increase  # 需确保代码中实现了此逻辑 
-cfg_crossover_progress: 0.4  # 前40%训练都在做安全插值
+cfg_weight: 0.5  # 这是最终权重
+cfg_weight_schedule: constant  # 需确保代码中实现了此逻辑 
+# cfg_crossover_progress: 0.4  # 前40%训练都在做安全插值
 
-# 2. 速度信赖域约束 (防止 Reward Stream 把机器人扯翻)
-max_guidance_norm: 0.5 
+# # 2. 速度信赖域约束 (防止 Reward Stream 把机器人扯翻)
+# max_guidance_norm: 0.5 
 
 # 3. 策略冻结：先求稳，暂时完全冻结 Prior
 freeze_prior: true 
@@ -172,6 +173,7 @@ model:
   _target_: model.flow.ft_ppo.ppoflow_dual_stream.DualStreamPPOFlow
   device: ${device}
   actor_policy_path: ${base_policy_path}
+  gamma_score: ${gamma_score}
   
   policy:
     _target_: model.flow.mlp_flow_score.VisionFlowMLP

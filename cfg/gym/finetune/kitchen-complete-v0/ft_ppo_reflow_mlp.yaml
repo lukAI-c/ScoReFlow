@@ -132,7 +132,7 @@ model:
   clip_ploss_coef_rate: 3
   clip_vloss_coef: null
   denoised_clip_value: 1.0
-  time_dim_explore: 0
+  : 0
   learn_explore_time_embedding: false
   use_time_independent_noise: false
   noise_hidden_dims: [64,64]

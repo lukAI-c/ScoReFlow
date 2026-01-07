@@ -1,7 +1,7 @@
 ######################################################################
 env_name: kitchen-complete-v0
 
-gamma: 2.0
+gamma_score: 2.0
 # future action forecasts
 action_dim: 9
 horizon_steps: 4
@@ -25,8 +25,8 @@ hydra:
   run:
     dir: ${logdir}
 _target_: agent.finetune.reinflow.train_ppo_flow_agent_dual_stream.TrainPPOFlowDualStreamAgent
-name: ${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}_gamma${gamma}_seed${seed}
-logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}/${now:%Y-%m-%d}_${now:%H-%M-%S}_gamma${gamma}_seed${seed}
+name: ${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}_gamma${gamma_score}_seed${seed}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_dual_stream_ta${horizon_steps}_td${denoising_steps}_cfg${model.cfg_weight}/${now:%Y-%m-%d}_${now:%H-%M-%S}_gamma${gamma_score}_seed${seed}
 base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/gym/pretrain/kitchen-complete-v0_pre_reflow_mish_mlp_ta4_td4/2025-05-05_20-13-17_42/checkpoint/state_500.pt
 normalization_path: ${oc.env:REINFLOW_DATA_DIR}/gym/${env_name}/normalization.npz
 resume_path: null
@@ -141,6 +141,7 @@ model:
   # Score-based exploration parameters
   epsilon_t: ${epsilon_t}
   epsilon_schedule: ${epsilon_schedule}
+  gamma_score: ${gamma_score}
   # Common parameters
   randn_clip_value: 3
   logprob_min: -1.0
