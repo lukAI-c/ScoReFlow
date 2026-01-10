@@ -1,8 +1,11 @@
 ###################################
+# ReinFlow + Score 结合版本 (Robomimic Square with Image)
+# 核心公式: drift = vt + gamma_score * nt * st
+# 其中 nt 是学习到的噪声，st 是 score 函数
+###################################
 env_suite: robomimic
 env_name: square
 
-gamma_score: 1
 obs_dim: 9
 cond_steps: 1
 img_cond_steps: 1
@@ -17,9 +20,9 @@ defaults:
 hydra:
   run:
     dir: ${logdir}
-_target_: agent.finetune.reinflow.train_ppo_flow_img_agent_score_qrdqn.TrainPPOImgFlowAgentQRDQN
-name: ${env_name}_ppo_reflow_mlp_score_qrdqn_ta${horizon_steps}_td${denoising_steps}_gamma${gamma_score}_seed${seed}
-logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/finetune/${env_name}_ppo_reflow_mlp_score_qrdqn_ta${horizon_steps}_td${denoising_steps}/${now:%Y-%m-%d}_${now:%H-%M-%S}_gamma${gamma_score}_${seed}
+_target_: agent.finetune.reinflow.train_ppo_flow_img_agent.TrainPPOImgFlowAgent
+name: ${env_name}_ft_flow_mlp_img_with_score_ta${horizon_steps}_td${denoising_steps}_tdf${ft_denoising_steps}_seed${seed}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/finetune/${env_name}_ft_flow_mlp_img_with_score_ta${horizon_steps}_td${denoising_steps}_tdf${ft_denoising_steps}/${now:%Y-%m-%d}_${now:%H-%M-%S}_${seed}
 base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/square/ReFlow/state_2000.pt
 resume_path: null
 robomimic_env_cfg_path: cfg/robomimic/env_meta/${env_name}-img.json
@@ -28,14 +31,18 @@ normalization_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/${env_name}-img/normal
 seed: 42
 device: cuda:0
 sim_device: cuda:0
-################################### ${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}
-denoising_steps: 4
-# ft_denoising_steps: 1
-# min_std: 0.08
-# max_std: 0.14
-# Score-based exploration parameters
-epsilon_t: 0.05
-epsilon_schedule: linear_decay_gamma  # Options: constant, linear_decay, cosine, sqrt_decay, exponential_decay, warmup_decay, quadratic_decay, inverse_sqrt, adaptive, training_decay, gaussian, gaussian_fixed_mean, uniform
+###################################
+denoising_steps: 1
+ft_denoising_steps: 1
+min_std: 0.08
+max_std: 0.14
+# Score 参数
+gamma_score: 1.0
+score_clip_value: 10.0
+# Score Scheduler 参数 (基于时间的动态调度)
+use_score_scheduler: true           # 是否使用可学习的时间调度
+score_scheduler_hidden_dim: 16      # Schedule 网络隐藏层维度
+score_scheduler_type: 'mlp'         # 'mlp', 'linear', 'fixed'
 ###################################
 
 env:
@@ -70,16 +77,16 @@ shape_meta:
     shape: [7]
 wandb:
   entity: ${oc.env:REINFLOW_WANDB_ENTITY}
-  project: robomimic-${env_name}-finetune-c51
+  project: robomimic-${env_name}-finetune-score
   run: ${now:%Y-%m-%d}_${now:%H-%M-%S}_${name}
   offline_mode: false
 train:
   n_train_itr: 301
-  n_critic_warmup_itr: 5    # Critic 预热：前 10 个 iteration 只训练 Critic，不训练 Actor
-  n_steps: 400 #400
+  n_critic_warmup_itr: 5
+  n_steps: 400
   gamma: 0.999
   augment: true
-  grad_accumulate: 20 # 20
+  grad_accumulate: 20
   actor_lr: 3.5e-06
   actor_weight_decay: 0
   actor_lr_scheduler:
@@ -87,7 +94,7 @@ train:
     first_cycle_steps: 100
     warmup_steps: 10
     min_lr: 3.5e-06
-  critic_lr: 4.5e-5
+  critic_lr: 4.5e-4
   critic_weight_decay: 0
   critic_lr_scheduler:
     type: cosine
@@ -102,11 +109,11 @@ train:
   reward_scale_running: true
   reward_scale_const: 1.0
   gae_lambda: 0.95
-  batch_size: 1024
+  batch_size: 500
   logprob_batch_size: 1000
-  update_epochs: 10 # 10
+  update_epochs: 10
   vf_coef: 0.5
-  ent_coef: 0.0001
+  ent_coef: 0.01
   target_kl: 0.01
   lr_schedule: fixed
   repeat_samples: true
@@ -115,12 +122,11 @@ train:
   account_for_initial_stochasticity: true
   max_grad_norm: 25.0
 model:
-  _target_: model.flow.ft_ppo.ppoflow_score_qrdqn.PPOFlowQRDQN
+  _target_: model.flow.ft_ppo.ppoflow_with_score.PPOFlowWithScore
   device: ${device}
-  gamma_score: ${gamma_score}
   actor_policy_path: ${base_policy_path}
   policy:
-    _target_: model.flow.mlp_flow_score.VisionFlowMLP #score
+    _target_: model.flow.mlp_flow.VisionFlowMLP
     backbone:
       _target_: model.common.vit.VitEncoder
       obs_shape: ${shape_meta.obs.rgb.shape}
@@ -171,37 +177,32 @@ model:
   act_max: 1
   obs_dim: ${obs_dim}
   cond_steps: ${cond_steps}
-  # noise_scheduler_type: learn
+  noise_scheduler_type: learn
   inference_steps: ${denoising_steps}
-  # ft_denoising_steps: ${ft_denoising_steps}
+  ft_denoising_steps: ${ft_denoising_steps}
   randn_clip_value: 3
-  epsilon_t: ${epsilon_t}
-  # min_sampling_denoising_std: ${min_std}
-  # min_logprob_denoising_std: ${min_std}
-  # max_logprob_denoising_std: ${max_std}
+  min_sampling_denoising_std: ${min_std}
+  min_logprob_denoising_std: ${min_std}
+  max_logprob_denoising_std: ${max_std}
   logprob_min: -1.0
   logprob_max: 1.0
-  clip_ploss_coef: 0.001 # 0.01
-  clip_ploss_coef_base: 0.001 #0.001
+  clip_ploss_coef: 0.01
+  clip_ploss_coef_base: 0.001
   clip_ploss_coef_rate: 3
   clip_vloss_coef: null
   denoised_clip_value: 1.0
-  # time_dim_explore: 0
-  # learn_explore_time_embedding: false
-  # use_time_independent_noise: true
-  # noise_hidden_dims: [384,384,384]
+  time_dim_explore: 0
+  learn_explore_time_embedding: false
+  use_time_independent_noise: true
+  noise_hidden_dims: [384,384,384]
   logprob_debug_sample: false
   logprob_debug_recalculate: false
-  # explore_net_activation_type: Tanh
+  explore_net_activation_type: Tanh
+  # Score 参数
+  gamma_score: ${gamma_score}
+  score_clip_value: ${score_clip_value}
+  # Score Scheduler 参数
+  use_score_scheduler: ${use_score_scheduler}
+  score_scheduler_hidden_dim: ${score_scheduler_hidden_dim}
+  score_scheduler_type: ${score_scheduler_type}
 
-    #########################################################
-  # QR-DQN 参数 (无需 v_min/v_max!)
-  #########################################################
-  use_distributional_critic: true
-  n_quantiles: 51           # 分位数数量 (推荐 32~64)
-  huber_kappa: 1.0          # Huber Loss 阈值
-  # 以下参数保留用于兼容性，QR-DQN 不使用
-  n_atoms: 51
-  v_min: 0.0
-  v_max: 1.0
-  reward_scale: 1.0         # QR-DQN 不需要归一化!

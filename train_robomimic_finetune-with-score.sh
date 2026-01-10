@@ -35,15 +35,14 @@ export PYOPENGL_PLATFORM="osmesa"
 # 2. 运行 Python
 python script/run.py \
     --config-dir=cfg/robomimic/finetune/square \
-    --config-name=ft_ppo_reflow_mlp_img_score_distribute_qrdqn \
+    --config-name=ft_ppo_reflow_mlp_img_with_score \
     base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/square_pre_reflow_mlp_img_ta4_td100/2025-12-10_08-22-54_42/checkpoint/last.pt \
     device=cuda:0 \
     sim_device=null \
-    wandb.offline_mode=false \
+    wandb.offline_mode=true \
     env.n_envs=50 \
     denoising_steps=4 \
     gamma_score=1 \
-    epsilon_t=0.01 \
     +train.ent_coef_schedule_on=false\
     +train.ent_coef_schedule='linear_decay' \
     +train.ent_coef_start=0.0001 \
