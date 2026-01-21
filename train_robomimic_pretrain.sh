@@ -10,8 +10,8 @@
 echo "Starting Robomimic Pre-training..."
 
 python script/run.py \
-    --config-dir=cfg/robomimic/pretrain/can\
-    --config-name=pre_reflow_mlp_img \
+    --config-dir=cfg/robomimic/pretrain/transport\
+    --config-name=pre_shortcut_mlp_img \
     device=cuda:0 \
     wandb.offline_mode=true \
     

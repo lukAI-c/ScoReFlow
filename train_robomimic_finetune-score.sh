@@ -34,22 +34,24 @@ export PYOPENGL_PLATFORM="osmesa"
 
 # 2. 运行 Python
 python script/run.py \
-    --config-dir=cfg/robomimic/finetune/square \
-    --config-name=ft_ppo_reflow_mlp_img_score_distribute_qrdqn \
-    base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/square_pre_reflow_mlp_img_ta4_td100/2025-12-10_08-22-54_42/checkpoint/last.pt \
-    device=cuda:0 \
+    --config-dir=cfg/robomimic/finetune/transport \
+    --config-name=ft_ppo_shortcut_mlp_img_score \
+    base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/transport/ShortCut/state_750.pt \
+    device=cuda:1 \
+    sim_device=cuda:2 \
     sim_device=null \
-    wandb.offline_mode=false \
+    wandb.offline_mode=true \
     env.n_envs=50 \
     denoising_steps=4 \
     gamma_score=1 \
     epsilon_t=0.01 \
-    +train.ent_coef_schedule_on=false\
+    +train.ent_coef_schedule_on=false \
     +train.ent_coef_schedule='linear_decay' \
     +train.ent_coef_start=0.0001 \
     +train.ent_coef_end=0.00001 \
     +train.ent_decay_start_itr=5 \
-    +train.ent_decay_end_itr=50
+    +train.ent_decay_end_itr=50 \
+    seed=0 \
 # +train.use_bc_loss=true \
 # +train.bc_loss_type='W2' \
 # +train.bc_loss_coeff=0.1                

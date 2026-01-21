@@ -18,7 +18,7 @@ hydra:
   run:
     dir: ${logdir}
 _target_: agent.finetune.reinflow.train_ppo_flow_agent_score.TrainPPOFlowAgent
-name: ${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}
+name: ${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}_seed${seed}
 logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_score_ta${horizon_steps}_td${denoising_steps}/${now:%Y-%m-%d}_${now:%H-%M-%S}_seed${seed}
 # TODO: Update base_policy_path to your pretrained model path
 base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/gym/pretrain/ant-medium-expert-v2_pre_reflow_mlp_ta4_td20_seed42/checkpoint/best.pt
@@ -120,8 +120,8 @@ model:
   epsilon_t: ${epsilon_t}
   # Common parameters
   randn_clip_value: 3
-  logprob_min: -1.0
-  logprob_max: 1.0
+  logprob_min: -20.0
+  logprob_max: 20.0
   clip_ploss_coef: 0.01
   clip_ploss_coef_base: 0.01
   clip_ploss_coef_rate: 3

@@ -48,76 +48,95 @@ color_dict = {
         'uniform': '#E30DEA',  
         'beta': "#6E0887",     
         'logitnormal': '#4B0082',
-        'FQL': "#0F8EE3"
+        'FQL': "#0F8EE3", 
+        # 新增: score 和 with_score 方法
+        'ScoRe-Flow (ours)': "#4335FFD2",  # 橙红色
+        'Score-based SDE (ours)': '#00CED1',  # 深青色
     }
 
 
 # Time/step ratios for each environment and method (in seconds/step)
 time_step_ratios = {
-        'hopper':{ 
-            'ReinFlow-R (ours)': 11.715,
-            'ReinFlow-S (ours)': 12.290,
+        'hopper':{
+            'ReinFlow-R': 11.715,
+            'ReinFlow-S': 12.290,
             'DPPO': 99.046,
-            'FQL': 4.418,            
+            'FQL': 4.418,
+            'ScoRe-Flow (ours)': 12.0,  # 需要根据实际测量值更新
+            'Score-based SDE (ours)': 12.5,  # 需要根据实际测量值更新
         },
-        'hopper-d4rl':{ 
-            'ReinFlow-R (ours)': 11.715,
-            'ReinFlow-S (ours)': 12.290,
+        'hopper-d4rl':{
+            'ReinFlow-R': 11.715,
+            'ReinFlow-S': 12.290,
             'DPPO': 99.046,
-            'FQL': 4.418,            
+            'FQL': 4.418,
+            'ScoRe-Flow (ours)': 12.0,  # 需要根据实际测量值更新
+            'Score-based SDE (ours)': 12.5,  # 需要根据实际测量值更新
         },
-        'walker':{ 
-            'ReinFlow-R (ours)': 11.563 ,
-            'ReinFlow-S (ours)': 13.019 ,
+        'walker':{
+            'ReinFlow-R': 11.563 ,
+            'ReinFlow-S': 13.019 ,
             'DPPO': 101.915 ,
-            'FQL': 5.017,            
+            'FQL': 5.017,
+            'ScoRe-Flow (ours)': 13.0,  # 需要根据实际测量值更新
+            'Score-based SDE (ours)': 13.5,  # 需要根据实际测量值更新
         },
-        'walker-d4rl':{ 
-            'ReinFlow-R (ours)': 11.563 ,
-            'ReinFlow-S (ours)': 13.019 ,
+        'walker-d4rl':{
+            'ReinFlow-R': 11.563 ,
+            'ReinFlow-S': 13.019 ,
             'DPPO': 101.915 ,
-            'FQL': 5.017,            
+            'FQL': 5.017,
+            'ScoRe-Flow (ours)': 13.0,  # 需要根据实际测量值更新
+            'Score-based SDE (ours)': 13.5,  # 需要根据实际测量值更新
         },
-        'ant':{ 
-            'ReinFlow-R (ours)': 17.473  ,
-            'ReinFlow-S (ours)': 17.734  ,
+        'ant':{
+            'ReinFlow-R': 17.473  ,
+            'ReinFlow-S': 17.734  ,
             'DPPO': 102.012  ,
-            'FQL': 5.167 ,            
+            'FQL': 5.167 ,
+            'ScoRe-Flow (ours)': 17.5,  # 需要根据实际测量值更新
+            'Score-based SDE (ours)': 18.0,  # 需要根据实际测量值更新
         },
-        'ant-d4rl':{ 
-            'ReinFlow-R (ours)': 17.473  ,
-            'ReinFlow-S (ours)': 17.734  ,
+        'ant-d4rl':{
+            'ReinFlow-R': 17.473  ,
+            'ReinFlow-S': 17.734  ,
             'DPPO': 102.012  ,
-            'FQL': 5.167 ,            
+            'FQL': 5.167 ,
+            'ScoRe-Flow (ours)': 17.5,  # 需要根据实际测量值更新
+            'Score-based SDE (ours)': 18.0,  # 需要根据实际测量值更新
         },
-        'humanoid':{ 
-            'ReinFlow-R (ours)': 30.916   ,
-            'ReinFlow-S (ours)': 30.529   ,
+        'humanoid':{
+            'ReinFlow-R': 30.916   ,
+            'ReinFlow-S': 30.529   ,
             'DPPO': 109.566   ,
-            'FQL': 5.249  ,            
+            'FQL': 5.249  ,
+            'ScoRe-Flow (ours)': 30.152 ,
+            'Score-based SDE (ours)':31.102 ,
         },
-        'humanoid-d4rl':{ 
-            'ReinFlow-R (ours)': 30.916   ,
-            'ReinFlow-S (ours)': 30.529   ,
+        'humanoid-d4rl':{
+            'ReinFlow-R': 30.916   ,
+            'ReinFlow-S': 30.529   ,
             'DPPO': 109.566   ,
-            'FQL': 5.249  ,            
+            'FQL': 5.249  ,
+            'ScoRe-Flow (ours)': 30.152 ,
+            'Score-based SDE (ours)':31.102 ,
         },
         'can-img': {
-            'ReinFlow-R (ours)': 218.061,
-            'ReinFlow-S (ours)': 218.061,
+            'ReinFlow-R': 218.061,
+            'ReinFlow-S': 218.061,
             'DPPO': 308.933
         },
         'square-img': {
-            'ReinFlow-R (ours)': 313.206,
-            'ReinFlow-S (ours)': 313.206,
+            'ReinFlow-R': 313.206,
+            'ReinFlow-S': 313.206,
             'DPPO': 437.830
         },
         'transport-img': {
-            'ReinFlow-S (ours)': 662.121,
+            'ReinFlow-S': 662.121,
             'DPPO': 701.712
         },
         'kitchen-complete-v0':{
-            'ReinFlow-S (ours)': 26.537 ,
+            'ReinFlow-S': 26.537 ,
             'DPPO': 83.158,
             'FQL': 5.249
         },
@@ -126,52 +145,76 @@ time_step_ratios = {
 
 method_name_dict = {
         'hopper':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_tdf10', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'hopper-d4rl':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_d4rl', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'walker':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_tdf10', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'walker-d4rl':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_d4rl', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'ant':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_tdf10', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'ant-d4rl':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_d4rl', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'humanoid':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_tdf10', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'humanoid-d4rl':[
-            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_reflow_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4_d4rl', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_d4rl', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'fql_mlp_ta4', 'display_name': 'FQL', 'color': color_dict['FQL']},
+            # 新增: score 方法
+            {'original_name': 'ppo_reflow_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_reflow_mlp_with_score_gammanet_ta4_td4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'humanoid-regularize-compare':[
             # {'original_name': 'ppo_reflow_mlp_ta4_td4', 'display_name': r'Entropy $\alpha=0.03$', 'color': color_dict['ReinFlow-R (ours)']},
@@ -200,14 +243,17 @@ method_name_dict = {
             {'original_name': 'diffusion_mlp_img_ta4_td100_tdf5', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
         ],
         'can-img': [
-            {'original_name': 'shortcut_mlp_ta4_td1_tdf1', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
-            {'original_name': 'flow_mlp_img_ta4_td1_tdf1', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'shortcut_mlp_ta4_td1_tdf1', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'flow_mlp_img_ta4_td1_tdf1', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
             {'original_name': 'gaussian_mlp_img_ta4', 'display_name': 'Gaussian', 'color': color_dict['Gaussian']},
             {'original_name': 'diffusion_mlp_img_ta4_td100_tdf5', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
+            # 新增: score 方法
+            {'original_name': 'flow_mlp_img_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'flow_mlp_img_with_score_gammanet_ta4_td4_tdf1', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'square-img': [
-            {'original_name': 'reflow', 'display_name': 'ReinFlow-R (ours)', 'color': color_dict['ReinFlow-R (ours)']},
-            {'original_name': 'shortcut_mlp_img_td4_td1_datascale_100', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'reflow', 'display_name': 'ReinFlow-R', 'color': color_dict['ReinFlow-R (ours)']},
+            {'original_name': 'shortcut_mlp_img_td4_td1_datascale_100', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'gaussian_mlp_img_ta4', 'display_name': 'Gaussian', 'color': color_dict['Gaussian']},
             {'original_name': 'diffusion_mlp_img_ta4_td100_tdf5', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
         ],
@@ -219,12 +265,15 @@ method_name_dict = {
         'transport-img': [
             {'original_name': 'gaussian_mlp_img_ta8', 'display_name': 'Gaussian', 'color': color_dict['Gaussian']},
             {'original_name': 'diffusion_mlp_img_ta8_td100_tdf5', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
-            {'original_name': 'shortcut_mlp_img_ta8_td4_tdf4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'shortcut_mlp_img_ta8_td4_tdf4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
         ],
         'kitchen-complete-v0': [
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_tdf10', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
+            # 新增: score 方法
+            {'original_name': 'ppo_shortcut_mlp_score_ta4_td4', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_with_score_gammanet_ta4_td4_tdf4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'kitchen-complete-v0-denoise_step': [
             {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S (4 steps)', 'color': color_dict['ReinFlow-S (ours)']},
@@ -234,13 +283,16 @@ method_name_dict = {
         'kitchen-partial-v0': [
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_tdf10', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
         ],
         'kitchen-mixed-v0': [
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
             {'original_name': 'ppo_diffusion_mlp_ta4_td20_tdf10', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
-            {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S (ours)', 'color': color_dict['ReinFlow-S (ours)']},
-        ],                     
+            {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
+            # 新增: score 方法
+            {'original_name': 'ppo_shortcut_mlp_score_ta4_td4_gamma1', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'ppo_shortcut_mlp_with_score_gammanet_ta4_td4_tdf4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
+        ],
         'kitchen-partial-v0-denoise_step':[
             {'original_name': 'ppo_shortcut_mlp_ta4_td4_tdf4', 'display_name': 'ReinFlow-S (4 steps)', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'ppo_shortcut_mlp_ta4_td2_tdf2', 'display_name': 'ReinFlow-S (2 steps)', 'color': color_dict['ReinFlow-S (2 steps)']},

@@ -290,10 +290,11 @@ def extract_and_plot(evaluation_name,
         if task_name=='kitchen-complete-v0':
             print(f"Original handles={handles}, labels={labels}")
             # Explicitly sort handles and labels for desired legend order (bottom to top: FQL, DPPO, ReinFlow-S)
-            desired_order = ['ReinFlow-S (ours)', 'DPPO','FQL']
+            desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'DPPO','FQL']
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
             sorted_handles, sorted_labels = zip(*sorted_handles_labels)
             print(f"Reordered labels={sorted_labels}")
+            # ax.legend(sorted_handles, sorted_labels, loc='lower right', bbox_to_anchor=(1.0, 0.2), fontsize=21)
             # ax.legend(sorted_handles, sorted_labels, fontsize=21)
             # ax.set_xlim(0,710000)
         elif task_name=='kitchen-partial-v0-sigma_s_t':
@@ -306,7 +307,8 @@ def extract_and_plot(evaluation_name,
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
             sorted_handles, sorted_labels = zip(*sorted_handles_labels)
             print(f"Reordered labels={sorted_labels}")
-            ax.legend(sorted_handles[::-1], sorted_labels[::-1], fontsize=21)
+            # 不在主图上显示 legend，只在单独的 legend 文件中显示
+            # ax.legend(sorted_handles[::-1], sorted_labels[::-1], fontsize=21)
         elif task_name=='kitchen-complete-v0-denoise_step':
             print(f"Original handles={handles}, labels={labels}")
             # Explicitly sort handles and labels for desired legend order (bottom to top)
@@ -317,16 +319,26 @@ def extract_and_plot(evaluation_name,
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
             sorted_handles, sorted_labels = zip(*sorted_handles_labels)
             print(f"Reordered labels={sorted_labels}")
+            # 不在主图上显示 legend，只在单独的 legend 文件中显示
             # ax.legend(sorted_handles[::-1], sorted_labels[::-1], fontsize=21)
+        elif task_name in ['kitchen-mixed-v0', 'kitchen-partial-v0']:
+            # 标准 kitchen 任务: kitchen-mixed-v0, kitchen-partial-v0
+            print(f"Original handles={handles}, labels={labels}")
+            desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'DPPO', 'FQL']
+            sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
+            sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
+            print(f"Reordered labels={sorted_labels}")
+            # 不在主图上显示 legend，只在单独的 legend 文件中显示
         else:
-            pass
-            # ax.legend(handles, labels, fontsize=21) #loc='lower right', bbox_to_anchor=(1.0, 0.2), 
+            # 其他 kitchen 任务: 使用默认排序
+            print(f"Original handles={handles}, labels={labels}")
+            # 不在主图上显示 legend，只在单独的 legend 文件中显示
         # ax.set_xlabel('Wall-Clock Time (hours)', fontsize=30)
         # ax.set_ylabel(evaluation_name_spaced, fontsize=27)
     else:
         if task_name=='humanoid-regularize-compare':
             # print(f"Original handles={handles}, labels={labels}")
-            # Explicitly sort handles and labels for desired legend order 
+            # Explicitly sort handles and labels for desired legend order
             desired_order = [r'$\mathbf{\alpha=0.03}$', r'$\mathbf{\beta=0.01}$', r'$\mathbf{\beta=0.1}$', r'$\mathbf{\beta=1.0}$', r'$\mathbf{BC}$']
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
             sorted_handles, sorted_labels = zip(*sorted_handles_labels)
@@ -352,11 +364,15 @@ def extract_and_plot(evaluation_name,
             sorted_handles, sorted_labels = zip(*sorted_handles_labels)
             legend = ax.legend(sorted_handles, sorted_labels, loc='lower right', bbox_to_anchor=(1.0, 0.09), fontsize=22) # handlelength=1.0
         elif (environment_name=='robomimic-img' and task_name in ['can-img', 'square-img', 'transport-img']):
+            # 不在主图上显示 legend，只在单独的 legend 文件中显示
             pass
         elif environment_name=='gym-state' and task_name in ['hopper-d4rl', 'walker-d4rl', 'ant-d4rl', 'humanoid-d4rl']:
+            # 不在主图上显示 legend，只在单独的 legend 文件中显示
             pass
         else:
-            ax.legend(handles, labels, loc='lower right', bbox_to_anchor=(1.0, 0.2), fontsize=21)
+            # 其他任务默认不显示 legend
+            # ax.legend(handles, labels, loc='lower right', bbox_to_anchor=(1.0, 0.2), fontsize=21)
+            pass
     ax.xaxis.get_offset_text().set_fontsize(24)  # Enlarge x-axis offset text (e.g., "1e7")
     ax.grid(True)
     if plot_x_axis == 'sample':
@@ -370,28 +386,39 @@ def extract_and_plot(evaluation_name,
     print(f"{evaluation_name} comparison saved to {output_file_path}.pdf")
     plt.close()
     
-    # plot legend.
+    # ============================================================================
+    # 生成单独的 legend 文件（不在主图上显示 legend）
+    # ============================================================================
     # Create a separate figure for the legend, 4 times wider than the original figure
     legend_fig = plt.figure(figsize=(40, 2))  # Width = 10 * 4, height same as original
     legend_ax = legend_fig.add_subplot(111)
+
+    # 根据不同任务类型，排序并生成 legend
     if 'kitchen' in task_name:
-        legend = legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=3)
+        # Kitchen 任务: 使用已排序的 handles 和 labels
+        legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=5)
     elif environment_name=='gym-state':
-        legend_ax.legend(handles, labels, fontsize=30, loc='center', ncol=4)
-    elif environment_name=='robomimic-img':
-        desired_order = ['ReinFlow-S (ours)', 'ReinFlow-R (ours)', 'DPPO', 'Gaussian']
+        # Gym 任务: 排序 legend，新方法在前
+        desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'FQL', 'BC']
         sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
-        print(f"sorted_handles_labels={len(sorted_handles_labels)}")
-        sorted_handles, sorted_labels = zip(*sorted_handles_labels)
+        sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
+        legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=7)
+    elif environment_name=='robomimic-img':
+        # Robomimic 任务: 排序 legend
+        desired_order = ['ReinFlow-S', 'ReinFlow-R', 'DPPO', 'Gaussian']
+        sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
+        sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
         legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=4)
+    else:
+        # 其他任务: 使用默认顺序
+        legend_ax.legend(handles, labels, fontsize=30, loc='center', ncol=len(handles))
+
     legend_ax.axis('off')  # Hide axes for the legend figure
+
     # Save the legend as a separate PDF
     legend_pdf_path = os.path.join(output_dir, f"{output_filename}_legend.pdf")
     legend_fig.savefig(legend_pdf_path, bbox_inches='tight', format='pdf')
     plt.close(legend_fig)  # Close the legend figure to free memory
-    # Save the main plot
-    # legend_path = os.path.join(output_dir, output_filename)
-    # fig.savefig(legend_path, bbox_inches='tight', format='pdf')
     plt.close(fig)  # Close the main figure
     print(f"Legend saved to {legend_pdf_path}")
     
@@ -410,9 +437,22 @@ def extract_and_plot(evaluation_name,
                 mean = stats['mean']
                 std = stats['std']
                 color = color_map[method]
+
+                # 只处理有时间比率的方法
                 if task_name in time_step_ratios and method in time_step_ratios[task_name]:
                     time_ratio = time_step_ratios[task_name][method]
-                    # print(f"{method}: mean={mean}, len(mean)={len(mean)}, {min(mean), max(mean)}")
+
+                    # 先进行下采样（如果需要）
+                    if method=='FQL':
+                        # down sample FQL
+                        print(f"down sample fql for time plot.")
+                        mean=mean[::5]
+                        std=std[::5]
+                    elif method!='Gaussian':
+                        print(f"method={method} for BC computing.")
+                        bc_value.append(mean[0])
+
+                    # 在下采样后计算 time_axis，确保长度匹配
                     data_len=len(mean)
                     if not method=='FQL':
                         eval_interval=PPO_EVAL_FREQ
@@ -420,26 +460,19 @@ def extract_and_plot(evaluation_name,
                     else:
                         eval_interval=FQL_EVAL_FREQ
                         time_per_itr=time_ratio/FQL_LOG_FREQ
-                    time_axis = np.arange(data_len) * eval_interval * time_per_itr /3600 # in hours. When we test the time of FQL the interval is measured every 200 iters, so the time elapsed should be devided by 200.                
-                # Plot with wall-clock time
-                linewidth = 2
-                alpha = 0.6 if method in ['FQL', 'Gaussian', 'DIPO', 'IDQL', 'DQL', 'DRWR', 'DAWR', 'QSM', 'DPPO'] else 1.0
-                
-                if method=='FQL':
-                    # down sample FQL
-                    print(f"down sample fql for time plot.")
-                    time_axis=time_axis[::5]
-                    mean=mean[::5]
-                    std=std[::5]
-                elif method!='Gaussian':
-                    print(f"method={method} for BC computing.")
-                    bc_value.append(mean[0])
-                ax.plot(time_axis, mean, linewidth=4, color=color, alpha=alpha)  # Rim line
-                line, = ax.plot(time_axis, mean, label=method, linewidth=linewidth, color=color, alpha=alpha)
-                line.set_linewidth(4)  # Thicken legend line
-                ax.fill_between(time_axis, mean - std, mean + std, alpha=alpha, color=color)
-                handles.append(line)
-                labels.append(method)
+                    time_axis = np.arange(data_len) * eval_interval * time_per_itr /3600 # in hours
+
+                    # Plot with wall-clock time
+                    linewidth = 2
+                    line_alpha = 0.6 if method in ['FQL', 'Gaussian', 'DIPO', 'IDQL', 'DQL', 'DRWR', 'DAWR', 'QSM', 'DPPO'] else 1.0
+                    fill_alpha = 0.12 if method in ['FQL', 'DPPO'] else 0.18  # 降低阴影透明度，让线条更清晰
+
+                    ax.plot(time_axis, mean, linewidth=4, color=color, alpha=line_alpha)  # Rim line
+                    line, = ax.plot(time_axis, mean, label=method, linewidth=linewidth, color=color, alpha=line_alpha)
+                    line.set_linewidth(4)  # Thicken legend line
+                    ax.fill_between(time_axis, mean - std, mean + std, alpha=fill_alpha, color=color)  # 使用更低的透明度
+                    handles.append(line)
+                    labels.append(method)
 
         #############################################
         if environment_name=='gym-state':
@@ -453,38 +486,32 @@ def extract_and_plot(evaluation_name,
         ax.set_ylabel(evaluation_name_spaced, fontsize=24)
         ax.tick_params(axis='both', labelsize=24)
         ax.xaxis.get_offset_text().set_fontsize(24)  # Enlarge x-axis offset text
-        if 'kitchen' in task_name: #==:
+
+        # 统一处理 legend：所有任务都显示 legend
+        print(f"Original handles={handles}, labels={labels}")
+
+        if 'kitchen' in task_name:
             if task_name=='kitchen-complete-v0':
-                print(f"Original handles={handles}, labels={labels}")
-                # Explicitly sort handles and labels for desired legend order (bottom to top: FQL, DPPO, ReinFlow-S)
-                desired_order = ['ReinFlow-S (ours)', 'DPPO','FQL']
+                # Kitchen Complete: 排序 legend
+                desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'DPPO', 'FQL']
                 sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
-                sorted_handles, sorted_labels = zip(*sorted_handles_labels)
+                sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
                 print(f"Reordered labels={sorted_labels}")
-                # ax.legend(sorted_handles, sorted_labels, fontsize=21)
-                # ax.set_xlim(0,1.3)
+                ax.legend(sorted_handles, sorted_labels, fontsize=21, loc='lower right')
             else:
-                pass
-                # ax.legend(handles, labels, fontsize=21) #bbox_to_anchor=(1.0, 0.2),  loc='lower right', 
+                # Kitchen Partial: 直接显示 legend
+                ax.legend(handles, labels, fontsize=21, loc='lower right')
         else:
-            # if task_name =='hopper':
-            print(f"Original handles={handles}, labels={labels}")
-            # Explicitly sort handles and labels for desired legend order (bottom to top: FQL, DPPO, ReinFlow-S)
-            desired_order = ['ReinFlow-S (ours)', 'ReinFlow-R (ours)', 'DPPO','FQL']
+            # Gym 任务: 排序 legend
+            desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'FQL', 'BC']
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
-            sorted_handles, sorted_labels = zip(*sorted_handles_labels)
+            sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
             print(f"Reordered labels={sorted_labels}")
-            if not environment_name=='gym-state':
-                ax.legend(sorted_handles, sorted_labels, fontsize=21)
+            # ax.legend(sorted_handles, sorted_labels, fontsize=21, loc='lower right', bbox_to_anchor=(1.0, 0.05))
+
             if environment_name=='gym-state':
                 ax.set_xlabel('Wall-Clock Time (hours)', fontsize=30)
                 ax.set_ylabel(evaluation_name_spaced, fontsize=27)
-                # if 'humanoid' not in task_name:
-                #     # ax.legend(sorted_handles, sorted_labels, fontsize=32)
-                # else:
-                    # ax.legend(sorted_handles, sorted_labels, fontsize=22, loc='upper right')
-            # else:
-            #     ax.legend(handles, labels, loc='lower right', bbox_to_anchor=(1.0, 0.2), fontsize=21)
         ax.grid(True)
         # Save wall-clock time plot
         wallclock_output_file_path = os.path.join(fig_dir, f"{output_filename}_wallclock")

@@ -21,20 +21,23 @@
 #     # train.render.num=5 \
 #     # train.render.freq=10
 
-
+# complete epsilon_t=0.01
+# mixed
+# partial epsilon_t=
 # echo "Fine-tuning finished."
 
 echo "Starting Franka Kitchen Fine-tuning..."
 
 MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
-    --config-dir=cfg/gym/finetune/Humanoid-v3 \
-    --config-name=ft_ppo_reflow_mlp_score \
-    base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/Humanoid-medium-v3_pre_reflow_mlp_ta4_td20_seed42/2025-12-26_03-33-44_42/checkpoint/best.pt \
+    --config-dir=cfg/gym/finetune/kitchen-partial-v0 \
+    --config-name=ft_ppo_shortcut_mlp_score \
+    base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/kitchen-partial-v0_pre_shortcut_mlp_ta4_td20/2025-05-08_03-15-13_42/state_2600.pt \
     device=cuda:0 \
     sim_device=cuda:0 \
-    wandb.offline_mode=true \
+    wandb.offline_mode=false \
     gamma_score=1 \
-    epsilon_t=0.01 \
+    epsilon_t=0.05 \
+    seed=516 \
     # env.save_video=true \
     # train.render.num=5 \
     # train.render.freq=10

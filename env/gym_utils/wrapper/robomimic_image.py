@@ -187,7 +187,7 @@ class RobomimicImageWrapper(gym.Env):
         if self.step_count % 100 == 0:
             rgb_mean = np.mean(obs["rgb"])
             rgb_std = np.std(obs["rgb"])
-            print(f"[RobomimicImageWrapper] Step: {self.step_count}, Reward: {reward}, Done: {done}, RGB Mean: {rgb_mean:.4f}, RGB Std: {rgb_std:.4f}")
+            # print(f"[RobomimicImageWrapper] Step: {self.step_count}, Reward: {reward}, Done: {done}, RGB Mean: {rgb_mean:.4f}, RGB Std: {rgb_std:.4f}")
             if rgb_mean == 0 and rgb_std == 0:
                 print("[RobomimicImageWrapper] WARNING: RGB observation is completely black!")
 

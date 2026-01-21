@@ -36,16 +36,16 @@ python script/run.py \
     sim_device=${DEVICE} \
     seed=${SEED} \
     wandb.offline_mode=true \
-    env.n_envs=1 \
-    train.offline_steps=200000 \
-    train.online_steps=100000 \
-    train.batch_size=256 \
-    train.actor_lr=1e-4 \
-    train.critic_lr=3e-4 \
-    train.val_freq=5000 \
-    train.n_eval_episode=10 \
-    train.alpha=3.0 \
-    train.target_ema_rate=0.005
+    env.n_envs=50 \
+    # train.offline_steps=200000 \
+    # train.online_steps=100000 \
+    # train.batch_size=256 \
+    # train.actor_lr=1e-4 \
+    # train.critic_lr=3e-4 \
+    # train.val_freq=5000 \
+    # train.n_eval_episode=10 \
+    # train.alpha=3.0 \
+    # train.target_ema_rate=0.005
 
 echo "=========================================="
 echo "FQL Training Finished!"

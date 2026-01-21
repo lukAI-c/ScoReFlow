@@ -1,6 +1,7 @@
 # MIT License
 # Copyright (c) 2025 ReinFlow Authors
 # PPOFlow with Score-guided drift (combining learnable noise + score guidance)
+# 仅结合score-reinflow的模型 没有可学习的t
 
 """
 结合 ReinFlow 可学习噪声 + Score 导向的 PPOFlow
@@ -34,12 +35,13 @@ from collections import namedtuple
 from typing import Tuple
 from torch.distributions.normal import Normal
 from model.flow.mlp_flow import FlowMLP, NoisyFlowMLP
+from model.flow.score_utils import ScoreFunctionMixin
 
 log = logging.getLogger(__name__)
 Sample = namedtuple("Sample", "trajectories chains")
 
 
-class PPOFlowWithScore(nn.Module):
+class PPOFlowWithScore(nn.Module, ScoreFunctionMixin):
     """
     PPOFlow + Score 导向
     
@@ -94,21 +96,21 @@ class PPOFlowWithScore(nn.Module):
         self.act_max = act_max
         self.obs_dim = obs_dim
         self.cond_steps = cond_steps
-        self.noise_scheduler_type = noise_scheduler_type
-        self.randn_clip_value = randn_clip_value
-        self.min_sampling_denoising_std = min_sampling_denoising_std
-        self.min_logprob_denoising_std = min_logprob_denoising_std
-        self.max_logprob_denoising_std = max_logprob_denoising_std
-        self.logprob_min = logprob_min
-        self.logprob_max = logprob_max
-        self.clip_ploss_coef = clip_ploss_coef
-        self.clip_ploss_coef_base = clip_ploss_coef_base
-        self.clip_ploss_coef_rate = clip_ploss_coef_rate
-        self.clip_vloss_coef = clip_vloss_coef
-        self.denoised_clip_value = denoised_clip_value
-        self.logprob_debug_sample = logprob_debug_sample
-        self.logprob_debug_recalculate = logprob_debug_recalculate
-        self.learn_explore_time_embedding = learn_explore_time_embedding
+        self.noise_scheduler_type:str = noise_scheduler_type
+        self.randn_clip_value:float = randn_clip_value
+        self.min_sampling_denoising_std:float = min_sampling_denoising_std
+        self.min_logprob_denoising_std:float = min_logprob_denoising_std
+        self.max_logprob_denoising_std:float = max_logprob_denoising_std
+        self.logprob_min:float= logprob_min
+        self.logprob_max:float= logprob_max
+        self.clip_ploss_coef:float = clip_ploss_coef
+        self.clip_ploss_coef_base:float = clip_ploss_coef_base
+        self.clip_ploss_coef_rate:float = clip_ploss_coef_rate
+        self.clip_vloss_coef:float = clip_vloss_coef
+        self.denoised_clip_value:float = denoised_clip_value
+        self.logprob_debug_sample=logprob_debug_sample
+        self.logprob_debug_recalculate=logprob_debug_recalculate
+        self.learn_explore_time_embedding= learn_explore_time_embedding
         self.time_dim_explore = time_dim_explore
         self.use_time_independent_noise = use_time_independent_noise
         self.noise_hidden_dims = noise_hidden_dims
@@ -137,29 +139,6 @@ class PPOFlowWithScore(nn.Module):
         self.critic = self.critic.to(self.device)
 
         self.report_network_params()
-
-    def compute_score(self, xt: Tensor, vt: Tensor, t: Tensor) -> Tensor:
-        """
-        计算 Score 函数: st(x) = (t·vt - xt) / (1 - t)
-
-        Args:
-            xt: [B, Ta, Da] 当前状态
-            vt: [B, Ta, Da] 速度场
-            t:  [B] 时间步
-        Returns:
-            st: [B, Ta, Da] score
-        """
-        t_expanded = t[:, None, None]  # [B, 1, 1]
-
-        # 防止 t=1 时除零
-        denom = (1 - t_expanded).clamp(min=1e-6)
-
-        st = (t_expanded * vt - xt) / denom
-
-        # 裁剪防止 score 爆炸
-        st = st.clamp(-self.score_clip_value, self.score_clip_value)
-
-        return st
 
     def init_actor_ft(self, policy_copy):
         self.actor_ft = NoisyFlowMLP(
@@ -229,21 +208,29 @@ class PPOFlowWithScore(nn.Module):
         其中 nt 是学习到的噪声标准差
         """
         B = cond["state"].shape[0]
-        dt = 1.0 / self.inference_steps
-
-        # 初始化
-        xt, log_prob = self.sample_first_point(B)
-        log_prob_steps = 1 if account_for_initial_stochasticity else 0
-        log_prob = log_prob if account_for_initial_stochasticity else 0.0
-
-        steps = torch.linspace(0, 1 - dt, self.inference_steps, device=self.device)
-        steps = steps.unsqueeze(0).expand(B, -1)
+        dt = (1/self.inference_steps) * torch.ones(B, self.horizon_steps, self.action_dim, device=self.device)
+        steps = torch.linspace(0, 1-1/self.inference_steps, self.inference_steps).repeat(B, 1).to(self.device)  # [batchsize, num_steps]
 
         if save_chains:
-            x_chain = torch.zeros(B, self.inference_steps + 1, self.horizon_steps, self.action_dim, device=self.device)
-            x_chain[:, 0] = xt
+            x_chain = torch.zeros((B, self.inference_steps+1, self.horizon_steps, self.action_dim), device=self.device)
 
-        log_prob_list = [] if self.logprob_debug_sample else None
+        if ret_logprob:
+            log_prob = 0.0
+            log_prob_steps = 0
+            if self.logprob_debug_sample:
+                log_prob_list = []
+
+        # sample first point
+        xt, log_prob_init = self.sample_first_point(B)
+        if ret_logprob and account_for_initial_stochasticity:
+            log_prob += log_prob_init
+            log_prob_steps += 1
+            if self.logprob_debug_sample:
+                log_prob_list.append(log_prob_init.mean().item())
+
+        xt: torch.Tensor
+        if save_chains:
+            x_chain[:, 0] = xt
 
         for i in range(self.inference_steps):
             t = steps[:, i]
@@ -321,13 +308,11 @@ class PPOFlowWithScore(nn.Module):
         """
         计算 log 概率，使用 Score 增强的 drift
         """
-        B = x_chain.shape[0]
-        dt = 1.0 / self.inference_steps
-
         logprob = 0.0
         joint_entropy = 0.0
         logprob_steps = 0
 
+        B = x_chain.shape[0]
         chains_prev = x_chain[:, :-1, :, :].flatten(-2, -1)
         chains_next = x_chain[:, 1:, :, :].flatten(-2, -1)
         chains_stds = torch.zeros_like(chains_prev, device=self.device)
@@ -345,10 +330,12 @@ class PPOFlowWithScore(nn.Module):
             logprob_steps += 1
 
         chains_vel = torch.zeros_like(chains_prev, device=self.device)
-        steps = torch.linspace(0, 1 - dt, self.inference_steps, device=self.device)
+
+        dt = 1.0 / self.inference_steps
+        steps = torch.linspace(0, 1-dt, self.inference_steps).repeat(B, 1).to(self.device)
 
         for i in range(self.inference_steps):
-            t = steps[i].expand(B)
+            t = steps[:, i]
             xt = x_chain[:, i]
 
             # 获取速度场和噪声

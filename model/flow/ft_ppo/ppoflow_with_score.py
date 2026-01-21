@@ -1,6 +1,7 @@
 # MIT License
 # Copyright (c) 2025 ReinFlow Authors
 # PPOFlow with Score-guided drift (combining learnable noise + score guidance)
+# 可学习score t 的score-reinflow
 
 """
 结合 ReinFlow 可学习噪声 + Score 导向的 PPOFlow
@@ -34,12 +35,13 @@ from collections import namedtuple
 from typing import Tuple
 from torch.distributions.normal import Normal
 from model.flow.mlp_flow import FlowMLP, NoisyFlowMLP
+from model.flow.score_utils import ScoreFunctionMixin
 
 log = logging.getLogger(__name__)
 Sample = namedtuple("Sample", "trajectories chains")
 
 
-class PPOFlowWithScore(nn.Module):
+class PPOFlowWithScore(nn.Module, ScoreFunctionMixin):
     """
     PPOFlow + Score 导向
     
@@ -202,29 +204,6 @@ class PPOFlowWithScore(nn.Module):
             alpha_t = alpha_raw * self.gamma_score  # [B, 1], 范围 [0, gamma_score]
             alpha_t = alpha_t.unsqueeze(-1)  # [B, 1, 1] 用于广播
         return alpha_t
-
-    def compute_score(self, xt: Tensor, vt: Tensor, t: Tensor) -> Tensor:
-        """
-        计算 Score 函数: st(x) = (t·vt - xt) / (1 - t)
-
-        Args:
-            xt: [B, Ta, Da] 当前状态
-            vt: [B, Ta, Da] 速度场
-            t:  [B] 时间步
-        Returns:
-            st: [B, Ta, Da] score
-        """
-        t_expanded = t[:, None, None]  # [B, 1, 1]
-
-        # 防止 t=1 时除零
-        denom = (1 - t_expanded).clamp(min=1e-6)
-
-        st = (t_expanded * vt - xt) / denom
-
-        # 裁剪防止 score 爆炸
-        st = st.clamp(-self.score_clip_value, self.score_clip_value)
-
-        return st
 
     def init_actor_ft(self, policy_copy):
         self.actor_ft = NoisyFlowMLP(

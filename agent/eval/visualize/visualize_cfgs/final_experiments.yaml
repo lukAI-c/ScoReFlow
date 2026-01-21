@@ -9,7 +9,7 @@ env:
   kitchen:
     task_name: ${task_name}
     kitchen-complete-v0:
-      csv_filename: "kitchen_complete_v0_suc_rate.csv"
+      csv_filename: "all_methods_merged.csv"
       re_expression: 'r''(?:kitchen-complete-v0)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 40
       n_rollout_steps: 200
@@ -39,7 +39,7 @@ env:
       n_rollout_steps: 200
       n_act_steps: 4
     kitchen-mixed-v0:
-      csv_filename:  "mixed-v0.csv"
+      csv_filename:  "all_methods_merged.csv"
       re_expression: 'r''(?:kitchen-mixed-v0)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 40
       n_rollout_steps: 200
@@ -47,7 +47,7 @@ env:
   robomimic-img:
     task_name: ${task_name}
     can-img:
-      csv_filename: "can_suc_rate.csv"
+      csv_filename: "all_methods_merged.csv"
       re_expression: 'r''(?:can_ft)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 50
       n_rollout_steps: 300
@@ -79,7 +79,7 @@ env:
       n_rollout_steps: 500
       n_act_steps: 4
     hopper-d4rl:
-      csv_filename: "hopper_reward_4methods.csv" #"hopper_reward_shortcut_correct.csv" #"hopper_reward.csv"
+      csv_filename: "all_methods_merged.csv" #"hopper_reward_shortcut_correct.csv" #"hopper_reward.csv"
       re_expression: 'r''(?:hopper-medium-v2)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 40
       n_rollout_steps: 500
@@ -91,7 +91,7 @@ env:
       n_rollout_steps: 500
       n_act_steps: 4
     walker-d4rl:
-      csv_filename: "walker_reward_4methods.csv" #"walker_reward_shortcut_correct.csv" #"walker_reward.csv"
+      csv_filename: "all_methods_merged.csv" #"walker_reward_shortcut_correct.csv" #"walker_reward.csv"
       re_expression: 'r''(?:walker2d-medium-v2)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''
       n_parallel_envs: 40
       n_rollout_steps: 500
@@ -109,7 +109,7 @@ env:
       n_rollout_steps: 500
       n_act_steps: 4
     ant-d4rl:
-      csv_filename: "ant_reward_4methods.csv"  #"ant_reward_shortcut_correct.csv" #"ant_reward.csv"
+      csv_filename: "all_methods_merged.csv"  #"ant_reward_shortcut_correct.csv" #"ant_reward.csv"
       re_expression: 'r''(?:ant-medium-expert-v2)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''
       n_parallel_envs: 40
       n_rollout_steps: 500
@@ -121,7 +121,7 @@ env:
       n_rollout_steps: 500
       n_act_steps: 4
     humanoid-d4rl:
-      csv_filename: "humanoid_4_methods.csv"  #"humanoid_reward_shortcut_betalogit.csv" # "humanoid_reward.csv"
+      csv_filename: "all_methods_merged.csv"  #"humanoid_reward_shortcut_betalogit.csv" # "humanoid_reward.csv"
       re_expression: 'r''(?:Humanoid-medium-v3)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''
       n_parallel_envs: 40
       n_rollout_steps: 500

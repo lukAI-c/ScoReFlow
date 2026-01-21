@@ -20,7 +20,7 @@ hydra:
   run:
     dir: ${logdir}
 _target_: agent.finetune.reinflow.train_ppo_flow_agent.TrainPPOFlowAgent
-name: ${env_name}_ppo_reflow_mlp_with_score_ta${horizon_steps}_td${denoising_steps}
+name: ${env_name}_ppo_reflow_mlp_with_score_ta${horizon_steps}_td${denoising_steps}_seed${seed}
 logdir: ${oc.env:REINFLOW_LOG_DIR}/gym/finetune/${env_name}_ppo_reflow_mlp_with_score_ta${horizon_steps}_td${denoising_steps}_tdf${ft_denoising_steps}/${now:%Y-%m-%d}_${now:%H-%M-%S}_seed${seed}
 base_policy_path: ${oc.env:REINFLOW_LOG_DIR}/gym/pretrain/hopper-v2/ReFlow/2025-02-06_01-35-03_D4RL_42/state_40.pt
 # ${oc.env:REINFLOW_LOG_DIR}/gym/pretrain/hopper-v2/ReFlow/2025-02-06_01-35-03_42/checkpoint/state_1500.pt

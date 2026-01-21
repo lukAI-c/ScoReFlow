@@ -25,11 +25,10 @@
 echo "Starting OpenAI Gym Fine-tuning..."
 
 MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
-    --config-dir=cfg/gym/finetune/hopper-v2 \
+    --config-dir=cfg/gym/finetune/ant-v2 \
     --config-name=ft_ppo_reflow_mlp \
-    base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/hopper-medium-v2_pre_reflow_mlp_ta4_td20_seed42/2026-01-07_13-22-36_42/checkpoint/state_40.pt\
     device=cuda:0 \
     sim_device=cuda:0 \
-    wandb.offline_mode=false \
+    wandb.offline_mode=true \
 
 echo "Fine-tuning finished."

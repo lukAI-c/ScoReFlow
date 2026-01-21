@@ -43,6 +43,7 @@ class TrainAgent:
         self.device = cfg.device
         self.seed=self.cfg.get('seed', 42)        
         set_seed_everywhere(self.seed)
+        
         # Wandb       
         self.use_wandb = cfg.wandb is not None
         if self.use_wandb:
