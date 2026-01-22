@@ -37,7 +37,8 @@ python script/run.py \
     --config-dir=cfg/robomimic/finetune/transport \
     --config-name=ft_ppo_shortcut_mlp_img_score \
     base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/transport/ShortCut/state_750.pt \
-    device=cuda:0 \
+    device=cuda:2 \
+    sim_device=cuda:3 \
     sim_device=null \
     wandb.offline_mode=true \
     env.n_envs=50 \
@@ -49,7 +50,8 @@ python script/run.py \
     +train.ent_coef_start=0.0001 \
     +train.ent_coef_end=0.00001 \
     +train.ent_decay_start_itr=5 \
-    +train.ent_decay_end_itr=50
+    +train.ent_decay_end_itr=50 \
+    seed=516 \
 # +train.use_bc_loss=true \
 # +train.bc_loss_type='W2' \
 # +train.bc_loss_coeff=0.1                

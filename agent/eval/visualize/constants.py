@@ -62,55 +62,55 @@ time_step_ratios = {
             'ReinFlow-S': 12.290,
             'DPPO': 99.046,
             'FQL': 4.418,
-            'ScoRe-Flow (ours)': 12.0,  # 需要根据实际测量值更新
-            'Score-based SDE (ours)': 12.5,  # 需要根据实际测量值更新
+            'ScoRe-Flow (ours)': 12.0,  
+            'Score-based SDE (ours)': 12.5,  
         },
         'hopper-d4rl':{
             'ReinFlow-R': 11.715,
             'ReinFlow-S': 12.290,
             'DPPO': 99.046,
             'FQL': 4.418,
-            'ScoRe-Flow (ours)': 12.0,  # 需要根据实际测量值更新
-            'Score-based SDE (ours)': 12.5,  # 需要根据实际测量值更新
+            'ScoRe-Flow (ours)': 11.715,  
+            'Score-based SDE (ours)': 12.3,  
         },
         'walker':{
             'ReinFlow-R': 11.563 ,
             'ReinFlow-S': 13.019 ,
             'DPPO': 101.915 ,
             'FQL': 5.017,
-            'ScoRe-Flow (ours)': 13.0,  # 需要根据实际测量值更新
-            'Score-based SDE (ours)': 13.5,  # 需要根据实际测量值更新
+            'ScoRe-Flow (ours)': 11.563,  
+            'Score-based SDE (ours)': 13.1,  
         },
         'walker-d4rl':{
             'ReinFlow-R': 11.563 ,
             'ReinFlow-S': 13.019 ,
             'DPPO': 101.915 ,
             'FQL': 5.017,
-            'ScoRe-Flow (ours)': 13.0,  # 需要根据实际测量值更新
-            'Score-based SDE (ours)': 13.5,  # 需要根据实际测量值更新
+            'ScoRe-Flow (ours)': 11.563,  
+            'Score-based SDE (ours)': 13.2,  
         },
         'ant':{
             'ReinFlow-R': 17.473  ,
             'ReinFlow-S': 17.734  ,
             'DPPO': 102.012  ,
             'FQL': 5.167 ,
-            'ScoRe-Flow (ours)': 17.5,  # 需要根据实际测量值更新
-            'Score-based SDE (ours)': 18.0,  # 需要根据实际测量值更新
+            'ScoRe-Flow (ours)': 17.473,  
+            'Score-based SDE (ours)': 17.810,  
         },
         'ant-d4rl':{
             'ReinFlow-R': 17.473  ,
             'ReinFlow-S': 17.734  ,
             'DPPO': 102.012  ,
             'FQL': 5.167 ,
-            'ScoRe-Flow (ours)': 17.5,  # 需要根据实际测量值更新
-            'Score-based SDE (ours)': 18.0,  # 需要根据实际测量值更新
+            'ScoRe-Flow (ours)': 17.473,  
+            'Score-based SDE (ours)': 17.810,  
         },
         'humanoid':{
             'ReinFlow-R': 30.916   ,
             'ReinFlow-S': 30.529   ,
             'DPPO': 109.566   ,
             'FQL': 5.249  ,
-            'ScoRe-Flow (ours)': 30.152 ,
+            'ScoRe-Flow (ours)': 30.916 ,
             'Score-based SDE (ours)':31.102 ,
         },
         'humanoid-d4rl':{
@@ -118,7 +118,7 @@ time_step_ratios = {
             'ReinFlow-S': 30.529   ,
             'DPPO': 109.566   ,
             'FQL': 5.249  ,
-            'ScoRe-Flow (ours)': 30.152 ,
+            'ScoRe-Flow (ours)': 30.916 ,
             'Score-based SDE (ours)':31.102 ,
         },
         'can-img': {
@@ -256,6 +256,9 @@ method_name_dict = {
             {'original_name': 'shortcut_mlp_img_td4_td1_datascale_100', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
             {'original_name': 'gaussian_mlp_img_ta4', 'display_name': 'Gaussian', 'color': color_dict['Gaussian']},
             {'original_name': 'diffusion_mlp_img_ta4_td100_tdf5', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
+            # 新增: score 方法
+            {'original_name': 'flow_mlp_img_score_ta4_td4_gamma1', 'display_name': 'Score-based SDE (ours)', 'color': color_dict['Score-based SDE (ours)']},
+            {'original_name': 'flow_mlp_img_with_score_gammanet_ta4_td4_tdf1', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'square-img-logitbeta': [
             {'original_name': 'reflow_mlp_img_td4_td1_tdf1', 'display_name': 'uniform', 'color': color_dict['uniform']},

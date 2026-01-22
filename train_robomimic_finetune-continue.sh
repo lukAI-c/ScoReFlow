@@ -37,9 +37,10 @@ export PYOPENGL_PLATFORM="osmesa"
 
 # 2. 运行 Python
 python script/run.py \
-    --config-dir=cfg/robomimic/finetune/transport \
-    --config-name=ft_ppo_shortcut_mlp_img_with_score_gammanet \
-    resume_path=${REINFLOW_LOG_DIR}/robomimic/finetune/transport_ft_shortcut_mlp_img_with_score_gammanet_ta8_td4_tdf4/2026-01-19_03-25-18_42/checkpoint/best.pt \
+    --config-dir=cfg/robomimic/finetune/square \
+    --config-name=ft_ppo_reflow_mlp_img_score \
+    resume_path=${REINFLOW_LOG_DIR}/robomimic/finetune/square_ft_flow_mlp_img_score_ta4_td4/2026-01-21_03-02-09_gamma1_0/checkpoint/state_100.pt \
+    base_policy_path=null \
     device=cuda:5 \
     sim_device=cuda:6 \
     sim_device=null \
@@ -53,7 +54,7 @@ python script/run.py \
     +train.ent_coef_end=0.00001 \
     +train.ent_decay_start_itr=5 \
     +train.ent_decay_end_itr=50 \
-    seed=3407 \
+    seed=0 \
 # +train.use_bc_loss=true \
 # +train.bc_loss_type='W2' \
 # +train.bc_loss_coeff=0.1                

@@ -33,7 +33,7 @@ echo "Starting Franka Kitchen Fine-tuning..."
 
 MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
     --config-dir=cfg/gym/finetune/kitchen-partial-v0 \
-    --config-name=ft_ppo_shortcut_mlp_with_score_gammanet_diversity \
+    --config-name=ft_ppo_shortcut_mlp_with_score_gammanet_seescore \
     base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/kitchen-partial-v0_pre_shortcut_mlp_ta4_td20/2025-05-08_03-15-13_42/state_2600.pt \
     device=cuda:0 \
     sim_device=cuda:0 \

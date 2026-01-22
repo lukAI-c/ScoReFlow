@@ -9,7 +9,7 @@
 set -e
 
 # Robomimic tasks to plot
-tasks=(can-img square-img transport-img)
+tasks=(square-img)
 
 # Project root: auto-detect (assume script is in agent/eval/visualize/)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

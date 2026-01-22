@@ -106,7 +106,7 @@ train:
   logprob_batch_size: 1000
   update_epochs: 10 #20
   vf_coef: 0.5
-  ent_coef: 0.01 # 0.0001
+  ent_coef: 0.0001 # 0.0001 entropy loss
 
   target_kl: 0.01
   lr_schedule: fixed

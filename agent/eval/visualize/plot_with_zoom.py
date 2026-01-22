@@ -61,15 +61,36 @@ def load_data(environment_name, task_name, csv_filename, re_expression):
                 break
         updated_map[name] = seed_cols
 
-    # 计算统计
+    # 计算统计 - 同时保存每个方法对应的有效 Step 索引
     method_stats = {}
     for method, seed_cols in updated_map.items():
-        rates = [data[col].dropna().values for _, col in seed_cols]
-        if not rates:
+        # 找到所有 seed 都有有效数据的行索引
+        valid_indices_list = []
+        for _, col in seed_cols:
+            valid_idx = data[col].dropna().index.tolist()
+            valid_indices_list.append(set(valid_idx))
+
+        if not valid_indices_list:
             continue
-        min_len = min(len(r) for r in rates)
-        arr = np.array([r[:min_len] for r in rates])
-        method_stats[method] = {'mean': np.nanmean(arr, axis=0), 'std': np.nanstd(arr, axis=0)}
+
+        # 取所有 seed 的交集（共同有效的行）
+        common_indices = sorted(list(set.intersection(*valid_indices_list)))
+        if not common_indices:
+            continue
+
+        # 提取数据
+        rates = []
+        for _, col in seed_cols:
+            rate = data.loc[common_indices, col].values
+            rates.append(rate)
+
+        arr = np.array(rates)
+        # 保存统计数据和对应的 Step 值
+        method_stats[method] = {
+            'mean': np.nanmean(arr, axis=0),
+            'std': np.nanstd(arr, axis=0),
+            'steps': data.loc[common_indices, 'Step'].values  # 保存对应的 Step
+        }
 
     # 颜色映射
     color_map = {cfg['display_name']: cfg['color'] for cfg in method_config}
@@ -128,10 +149,10 @@ def create_zoom_inset(ax, zoom_xlim, zoom_ylim, zoom_position='lower right', zoo
     # 连接线：从放大区域连接到子图
     if 'lower' in zoom_position or (zoom_pos and zoom_pos[1] < 0.4):
         corner = (zoom_xlim[1], zoom_ylim[1])  # 放大区域右上角
-        inset_corner = (1, 1)  # 子图上角
+        inset_corner = (1, 0)  # 子图上角
     else:
         corner = (zoom_xlim[1], zoom_ylim[0])  # 放大区域右下角
-        inset_corner = (0, 0)  # 子图左下角
+        inset_corner = (0, 1)  # 子图左下角
 
     con = ConnectionPatch(xyA=corner, coordsA=ax.transData, xyB=inset_corner, coordsB=axins.transAxes,
                           arrowstyle="-", linewidth=2, color='red', linestyle='--', alpha=0.8)
@@ -189,19 +210,15 @@ def main(cfg: DictConfig):
     # 加载数据
     data, method_stats, color_map = load_data(environment_name, task_name, csv_filename, re_expression)
     print(f"Loaded methods: {list(method_stats.keys())}")
+    for method, stats in method_stats.items():
+        print(f"  {method}: {len(stats['mean'])} points, steps range [{stats['steps'][0]}, {stats['steps'][-1]}]")
 
-    # 计算 x 轴
-    raw_steps = data['Step'].values
-    global_min_len = min(len(s['mean']) for s in method_stats.values())
-
+    # 设置 x 轴标签
     if plot_x_axis == 'step':
-        x_axis = raw_steps[:global_min_len]
         x_label = 'Steps'
     elif plot_x_axis == 'sample':
-        x_axis = raw_steps[:global_min_len] * n_parallel_envs * n_rollout_steps * n_act_steps
         x_label = 'Samples'
     elif plot_x_axis == 'wallclock':
-        x_axis = None  # wallclock 每个方法单独计算
         x_label = 'Wall-Clock Time (hours)'
     else:
         raise ValueError(f"Unsupported plot_x_axis: {plot_x_axis}")
@@ -216,29 +233,35 @@ def main(cfg: DictConfig):
     # 绘制主图和放大图的函数
     def plot_curves(target_ax, for_zoom=False):
         for method, stats in method_stats.items():
-            mean = stats['mean'][:global_min_len].copy()
-            std = stats['std'][:global_min_len].copy()
+            mean = stats['mean'].copy()
+            std = stats['std'].copy()
+            method_steps = stats['steps']  # 每个方法自己的 Step 值
             color = color_map.get(method, 'gray')
 
             is_ours = '(ours)' in method
             lw = 3 if is_ours else 1.5
             alpha = 1.0 if is_ours else 0.6
 
-            # Wallclock 模式每个方法 x 轴不同
+            # 计算该方法的 x 轴
             if is_wallclock:
                 if method not in time_step_ratios.get(task_name, {}):
                     continue
                 time_ratio = time_step_ratios[task_name][method]
                 if method == 'FQL':
                     mean, std = mean[::5], std[::5]
+                    method_steps = method_steps[::5]
                     eval_interval = FQL_EVAL_FREQ
                     time_per_itr = time_ratio / FQL_LOG_FREQ
                 else:
                     eval_interval = PPO_EVAL_FREQ
                     time_per_itr = time_ratio
                 method_x = np.arange(len(mean)) * eval_interval * time_per_itr / 3600
+            elif plot_x_axis == 'step':
+                method_x = method_steps
+            elif plot_x_axis == 'sample':
+                method_x = method_steps * n_parallel_envs * n_rollout_steps * n_act_steps
             else:
-                method_x = x_axis[:len(mean)]
+                method_x = method_steps
 
             line, = target_ax.plot(method_x, mean, linewidth=lw, color=color, alpha=alpha, label=method)
             target_ax.fill_between(method_x, mean - std, mean + std, alpha=0.1, color=color)

@@ -63,9 +63,11 @@ class TrainPPOAgent(TrainAgent):
 
         # Warm up period for critic before actor updates
         self.n_critic_warmup_itr = cfg.train.n_critic_warmup_itr
+        actor_params = self.model.get_actor_params() if hasattr(self.model, 'get_actor_params') else self.model.actor_ft.parameters()
 
         self.actor_optimizer = torch.optim.AdamW(
-            self.model.actor_ft.parameters(),
+            # self.model.actor_ft.parameters(),
+            actor_params,
             lr=cfg.train.actor_lr,
             weight_decay=cfg.train.actor_weight_decay,
         )
@@ -284,8 +286,10 @@ class TrainPPOAgent(TrainAgent):
         
     def reset_actor_optimizer(self):
         """Not used anywhere currently"""
+        actor_params = self.model.get_actor_params() if hasattr(self.model, 'get_actor_params') else self.model.actor_ft.parameters()
         new_optimizer = torch.optim.AdamW(
-            self.model.actor_ft.parameters(),
+            # self.model.actor_ft.parameters(),
+            actor_params,
             lr=self.cfg.train.actor_lr,
             weight_decay=self.cfg.train.actor_weight_decay,
         )

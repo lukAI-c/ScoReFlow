@@ -53,7 +53,7 @@ env:
       n_rollout_steps: 300
       n_act_steps: 4
     square-img:
-      csv_filename: "44.csv" #"square-4-methods.csv"   #"square_suc_rate.csv"
+      csv_filename: "all_methods_merged.csv" #"square-4-methods.csv"   #"square_suc_rate.csv"
       re_expression: 'r''(?:square_ft)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 50
       n_rollout_steps: 400
@@ -65,7 +65,7 @@ env:
       n_rollout_steps: 400
       n_act_steps: 4
     transport-img:
-      csv_filename: "transport_suc_rate.csv"
+      csv_filename: "all_methods_merged.csv"
       re_expression: 'r''(?:transport_ft)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 50
       n_rollout_steps: 400
