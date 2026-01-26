@@ -31,14 +31,14 @@ device: cuda:0
 sim_device: cuda:0
 denoising_steps: 4
 ft_denoising_steps: 4
-min_std: 0.12 # 0.05
-max_std: 0.35 # 0.12
+min_std: 0.05 # 0.05
+max_std: 0.12 # 0.12
 # Score 参数
 gamma_score: 1.0
-score_clip_value: 10.0
+score_clip_value: 15.0
 # Score Scheduler 参数 (基于时间的动态调度)
 use_score_scheduler: true           # 是否使用可学习的时间调度
-score_scheduler_hidden_dim: 16      # Schedule 网络隐藏层维度
+score_scheduler_hidden_dim: 64      # Schedule 网络隐藏层维度
 score_scheduler_type: 'mlp'         # 'mlp', 'linear', 'fixed'
 env:
   n_envs: 40
@@ -61,7 +61,7 @@ wandb:
   run: ${now:%Y-%m-%d}_${now:%H-%M-%S}_${name}
   offline_mode: false
 train:
-  n_train_itr: 301
+  n_train_itr: 1001 #301
   n_critic_warmup_itr: 0
   n_steps: 200
   gamma: 0.99
@@ -69,16 +69,16 @@ train:
   actor_weight_decay: 0
   actor_lr_scheduler:
     type: cosine
-    first_cycle_steps: 100
+    first_cycle_steps: 150 #100
     warmup_steps: 10
     min_lr: 2.0e-05
-  critic_lr: 0.00065
+  critic_lr: 0.00065 # .00065
   critic_weight_decay: 1.0e-05
   critic_lr_scheduler:
     type: cosine
-    first_cycle_steps: 100
+    first_cycle_steps: 50 #100
     warmup_steps: 10
-    min_lr: 0.0003
+    min_lr: 0.0003 # .0003
   save_model_freq: 300
   val_freq: 10
   render:
@@ -87,18 +87,18 @@ train:
   reward_scale_running: true
   reward_scale_const: 1.0
   gae_lambda: 0.95
-  batch_size: 5600
+  batch_size: 8600
   update_epochs: 10
   vf_coef: 0.5
-  ent_coef: 0.0
+  ent_coef: 0.01 #0
   target_kl: 1.0
   lr_schedule: fixed
   repeat_samples: true
   verbose: false
   clip_intermediate_actions: true
   account_for_initial_stochasticity: true
-  max_noise_hold_ratio: 0.35
-  max_noise_decay_ratio: 0.7
+  max_noise_hold_ratio: 0.5 #0.35
+  max_noise_decay_ratio: 0.85 #0.7
 model:
   _target_: model.flow.ft_ppo.pposhortcut_with_score_gammanet_obs.PPOShortCutWithScoreGammaNetObs
   device: ${device}
@@ -144,10 +144,10 @@ model:
   clip_ploss_coef_rate: 3
   clip_vloss_coef: null
   denoised_clip_value: 1.0
-  time_dim_explore: 0
-  learn_explore_time_embedding: false
+  time_dim_explore: 16 # 0
+  learn_explore_time_embedding: true # False
   use_time_independent_noise: false
-  noise_hidden_dims: [64,64]
+  noise_hidden_dims: [128,128] # [64, 64]
   logprob_debug_sample: false
   logprob_debug_recalculate: false
   explore_net_activation_type: Tanh

@@ -290,7 +290,7 @@ def extract_and_plot(evaluation_name,
         if task_name=='kitchen-complete-v0':
             print(f"Original handles={handles}, labels={labels}")
             # Explicitly sort handles and labels for desired legend order (bottom to top: FQL, DPPO, ReinFlow-S)
-            desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'DPPO','FQL']
+            desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'DPPO','FQL']
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
             sorted_handles, sorted_labels = zip(*sorted_handles_labels)
             print(f"Reordered labels={sorted_labels}")
@@ -324,7 +324,7 @@ def extract_and_plot(evaluation_name,
         elif task_name in ['kitchen-mixed-v0', 'kitchen-partial-v0']:
             # 标准 kitchen 任务: kitchen-mixed-v0, kitchen-partial-v0
             print(f"Original handles={handles}, labels={labels}")
-            desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'DPPO', 'FQL']
+            desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'DPPO', 'FQL']
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
             sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
             print(f"Reordered labels={sorted_labels}")
@@ -399,13 +399,13 @@ def extract_and_plot(evaluation_name,
         legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=5)
     elif environment_name=='gym-state':
         # Gym 任务: 排序 legend，新方法在前
-        desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'FQL', 'BC']
+        desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'FQL', 'BC']
         sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
         sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
         legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=7)
     elif environment_name=='robomimic-img':
         # Robomimic 任务: 排序 legend
-        desired_order = ['ReinFlow-S', 'ReinFlow-R', 'DPPO', 'Gaussian']
+        desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'Gaussian']
         sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
         sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
         legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=4)
@@ -493,7 +493,7 @@ def extract_and_plot(evaluation_name,
         if 'kitchen' in task_name:
             if task_name=='kitchen-complete-v0':
                 # Kitchen Complete: 排序 legend
-                desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'DPPO', 'FQL']
+                desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'DPPO', 'FQL']
                 sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
                 sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
                 print(f"Reordered labels={sorted_labels}")
@@ -503,7 +503,7 @@ def extract_and_plot(evaluation_name,
                 ax.legend(handles, labels, fontsize=21, loc='lower right')
         else:
             # Gym 任务: 排序 legend
-            desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'FQL', 'BC']
+            desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'FQL', 'BC']
             sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
             sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
             print(f"Reordered labels={sorted_labels}")

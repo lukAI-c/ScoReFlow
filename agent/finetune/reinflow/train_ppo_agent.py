@@ -63,6 +63,7 @@ class TrainPPOAgent(TrainAgent):
 
         # Warm up period for critic before actor updates
         self.n_critic_warmup_itr = cfg.train.n_critic_warmup_itr
+        # gammanet 网络更新
         actor_params = self.model.get_actor_params() if hasattr(self.model, 'get_actor_params') else self.model.actor_ft.parameters()
 
         self.actor_optimizer = torch.optim.AdamW(
@@ -286,6 +287,7 @@ class TrainPPOAgent(TrainAgent):
         
     def reset_actor_optimizer(self):
         """Not used anywhere currently"""
+        # gammanet网络更新
         actor_params = self.model.get_actor_params() if hasattr(self.model, 'get_actor_params') else self.model.actor_ft.parameters()
         new_optimizer = torch.optim.AdamW(
             # self.model.actor_ft.parameters(),

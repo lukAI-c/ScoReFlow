@@ -90,7 +90,7 @@ train:
   batch_size: 5600
   update_epochs: 10
   vf_coef: 0.5
-  ent_coef: 0.0
+  ent_coef: 0.01
   target_kl: 1.0
   lr_schedule: fixed
   repeat_samples: true

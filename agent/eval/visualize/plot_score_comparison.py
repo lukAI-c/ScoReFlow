@@ -31,7 +31,7 @@ METHODS = [
     },
     {
         'original_name': 'ppo_reflow_mlp_score_ta4_td4_gamma1',
-        'display_name': 'Score-based SDE (ours)',
+        'display_name': 'Score-SDE',
         'color': '#e74c3c',  # 红色
     },
     # 如果有 ReinFlow-R，取消下面的注释并修改 original_name

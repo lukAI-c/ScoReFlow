@@ -1,6 +1,5 @@
-# MIT License 可学习参数版本wqwqwqwq
-# Copyright (c) 2025 ReinFlow Authors - Dual-Stream Score Editing
-
+# MIT License 可学习参数版本
+# Copyright (c) 2026 ScoRe-Flow Authors
 """
 Dual-Stream Score Editing PPO Flow Agent
 

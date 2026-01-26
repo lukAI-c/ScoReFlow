@@ -1,5 +1,5 @@
 # MIT License
-# Copyright (c) 2025 ReinFlow Authors
+# Copyright (c) 2026 ScoRe-Flow Authors
 # PPOShortCut with Score-guided drift + Learnable Gamma Network (Observation-Dependent)
 
 """

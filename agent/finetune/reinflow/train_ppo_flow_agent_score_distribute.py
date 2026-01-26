@@ -1,5 +1,5 @@
 # MIT License
-# Copyright (c) 2025 ReinFlow Authors - Distributional RL Extension
+# Copyright (c) 2026 ScoRe-Flow Authors
 
 """
 PPO Flow Agent with Distributional Critic (C51) Support

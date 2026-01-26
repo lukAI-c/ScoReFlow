@@ -95,6 +95,7 @@ class PPOShortCutScore(nn.Module, ScoreFunctionMixin):
                  epsilon_schedule='constant',   # epsilon schedule: 'constant', 'linear_decay', 'cosine'
                  lamda = 1, # default: 1
                  gamma_score = 1.0,
+                 score_clip_value: float = 5.0,  # Score 裁剪值，防止数值爆炸
                  load_weights_in_init: bool = True,
                  use_ema=True
                  ):
@@ -104,6 +105,7 @@ class PPOShortCutScore(nn.Module, ScoreFunctionMixin):
         self.device = device
         self.inference_steps = inference_steps          # number of steps for inference.
         self.action_dim = act_dim
+        self.score_clip_value = score_clip_value
         self.horizon_steps = horizon_steps
         self.act_dim_total = self.horizon_steps * self.action_dim
         self.act_min = act_min
@@ -276,6 +278,8 @@ class PPOShortCutScore(nn.Module, ScoreFunctionMixin):
 
             # Compute score: st(x) = (t * bt(x) - x) / (1 - t)
             st = self.compute_score(xt, vt, t_batch)  # [B, horizon_steps, action_dim]
+            # Clip score to prevent numerical instability
+            st = torch.clamp(st, -self.score_clip_value, self.score_clip_value)
 
             # Compute epsilon at this timestep
             eps_t = self.get_epsilon_at_time(t.item())
@@ -398,6 +402,8 @@ class PPOShortCutScore(nn.Module, ScoreFunctionMixin):
 
             # 2. Compute score: st(x) = (t * bt(x) - x) / (1 - t)
             st = self.compute_score(xt, vt, t_batch)  # [B, Ta, Da]
+                        # Clip score to prevent numerical instability
+            st = torch.clamp(st, -self.score_clip_value, self.score_clip_value)
 
             # 3. Compute epsilon at this timestep
             eps_t = self.get_epsilon_at_time(t.item())

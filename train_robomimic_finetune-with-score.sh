@@ -37,11 +37,11 @@ export PYOPENGL_PLATFORM="osmesa"
 
 # 2. 运行 Python
 python script/run.py \
-    --config-dir=cfg/robomimic/finetune/transport \
-    --config-name=ft_ppo_shortcut_mlp_img_with_score_gammanet_obs \
-    base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/transport/ShortCut/state_750.pt \
-    device=cuda:2 \
-    sim_device=cuda:3 \
+    --config-dir=cfg/robomimic/finetune/can \
+    --config-name=ft_ppo_reflow_mlp_img_with_score_gammanet_obs \
+    base_policy_path=null \
+    device=cuda:5 \
+    sim_device=cuda:6 \
     sim_device=null \
     wandb.offline_mode=true \
     env.n_envs=50 \

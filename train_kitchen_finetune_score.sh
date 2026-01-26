@@ -21,9 +21,9 @@
 #     # train.render.num=5 \
 #     # train.render.freq=10
 
-# complete epsilon_t=0.01
-# mixed
-# partial epsilon_t=
+# complete epsilon_t=0.01-0.1
+# mixed 0.1
+# partial epsilon_t= 0.0
 # echo "Fine-tuning finished."
 
 echo "Starting Franka Kitchen Fine-tuning..."
@@ -36,8 +36,10 @@ MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
     sim_device=cuda:0 \
     wandb.offline_mode=false \
     gamma_score=1 \
+    denoising_steps=4 \
     epsilon_t=0.05 \
-    seed=516 \
+    seed=0 \
+    train.ent_coef=0.001 \
     # env.save_video=true \
     # train.render.num=5 \
     # train.render.freq=10

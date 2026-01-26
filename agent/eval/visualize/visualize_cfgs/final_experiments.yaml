@@ -33,7 +33,7 @@ env:
       n_rollout_steps: 200
       n_act_steps: 4
     kitchen-partial-v0:
-      csv_filename: "partial-v0.csv"
+      csv_filename: "all_methods_merged.csv"
       re_expression: 'r''(?:kitchen-partial-v0)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 40
       n_rollout_steps: 200

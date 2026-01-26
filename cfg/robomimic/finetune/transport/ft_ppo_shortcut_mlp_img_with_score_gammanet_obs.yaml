@@ -117,7 +117,7 @@ train:
   logprob_batch_size: 1000
   update_epochs: 10
   vf_coef: 0.5
-  ent_coef: 0.01
+  ent_coef: 0.001 # 0.01
   target_kl: 0.01
   lr_schedule: fixed
   repeat_samples: true

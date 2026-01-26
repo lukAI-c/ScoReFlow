@@ -1,5 +1,5 @@
 # MIT License
-# Copyright (c) 2025 ReinFlow Authors
+# Copyright (c) 2026 ScoRe-Flow Authors
 # PPOShortCut with Score-guided drift + Learnable Gamma Network
 
 """
@@ -185,8 +185,8 @@ class PPOShortCutWithScore(nn.Module, ScoreFunctionMixin):
             ).to(self.device)
 
             # 初始化最后一层为接近 0 的小值，让训练初期 alpha 较小，保持稳定
-            nn.init.constant_(self.score_scheduler[-2].weight, 0.1)
-            nn.init.constant_(self.score_scheduler[-2].bias, 0.0)
+            nn.init.constant_(self.score_scheduler[-2].weight, 0.1) # 初值0.1
+            nn.init.constant_(self.score_scheduler[-2].bias, 0.0) # 初值0
 
             logging.info(f"Score scheduler: Adaptive MLP (input={input_dim}, hidden={hidden_dim})")
         else:

@@ -79,25 +79,25 @@ wandb:
   offline_mode: false
 train:
   n_train_itr: 201
-  n_critic_warmup_itr: 2
+  n_critic_warmup_itr: 5
   n_steps: 400
   gamma: 0.999
   augment: true
   grad_accumulate: 20
-  actor_lr: 3.5e-06
+  actor_lr: 3.5e-06 # 3.5e-06
   actor_weight_decay: 0
   actor_lr_scheduler:
     type: cosine
     first_cycle_steps: 100
     warmup_steps: 10
     min_lr: 3.5e-06
-  critic_lr: 0.00032
+  critic_lr: 0.00032 # 0.00032
   critic_weight_decay: 1.0e-05
   critic_lr_scheduler:
     type: cosine
     first_cycle_steps: 100
     warmup_steps: 30
-    min_lr: 0.0003
+    min_lr: 0.0003 # 0.0003
   save_model_freq: 100
   val_freq: 10
   render:
@@ -110,14 +110,14 @@ train:
   logprob_batch_size: 1000
   update_epochs: 10
   vf_coef: 0.5
-  ent_coef: 0.0
+  ent_coef: 0.001 # 0
   target_kl: 0.01
   lr_schedule: fixed
   repeat_samples: true
   verbose: false
   clip_intermediate_actions: true
   account_for_initial_stochasticity: true
-  max_grad_norm: 25.0
+  max_grad_norm: 10.0 # 25
 model:
   _target_: model.flow.ft_ppo.pposhortcut_score.PPOShortCutScore
   device: ${device}

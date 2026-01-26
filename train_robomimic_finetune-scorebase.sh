@@ -51,7 +51,7 @@ python script/run.py \
     +train.ent_coef_end=0.00001 \
     +train.ent_decay_start_itr=5 \
     +train.ent_decay_end_itr=50 \
-    seed=516 \
+    seed=41 \
 # +train.use_bc_loss=true \
 # +train.bc_loss_type='W2' \
 # +train.bc_loss_coeff=0.1                

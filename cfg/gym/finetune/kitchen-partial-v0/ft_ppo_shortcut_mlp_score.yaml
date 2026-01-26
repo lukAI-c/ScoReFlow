@@ -65,16 +65,16 @@ train:
   actor_weight_decay: 0
   actor_lr_scheduler:
     type: cosine
-    first_cycle_steps: 100
+    first_cycle_steps: 251 #100
     warmup_steps: 10
     min_lr: 2.0e-05
-  critic_lr: 0.00065
+  critic_lr: 2e-04 #.00065
   critic_weight_decay: 1.0e-05
   critic_lr_scheduler:
     type: cosine
-    first_cycle_steps: 100
+    first_cycle_steps: 251 #100
     warmup_steps: 10
-    min_lr: 0.0003
+    min_lr: 5e-05 #0.0003
   save_model_freq: 300
   val_freq: 10
   render:
@@ -98,6 +98,7 @@ train:
 model:
   _target_: model.flow.ft_ppo.pposhortcut_score.PPOShortCutScore
   device: ${device}
+  score_clip_value: 3.0   # 新增：Score 裁剪值
   #########################################################
   policy:
     _target_: model.flow.mlp_shortcut.ShortCutFlowMLP

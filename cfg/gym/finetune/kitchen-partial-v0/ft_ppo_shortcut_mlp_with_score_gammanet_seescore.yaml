@@ -38,7 +38,7 @@ gamma_score: 1.0
 score_clip_value: 10
 # Score Scheduler 参数 (基于时间的动态调度)
 use_score_scheduler: true           # 是否使用可学习的时间调度
-score_scheduler_hidden_dim: 256      # Schedule 网络隐藏层维度
+score_scheduler_hidden_dim: 64      # Schedule 网络隐藏层维度
 score_scheduler_type: 'mlp'         # 'mlp', 'linear', 'fixed'
 env:
   n_envs: 40
@@ -90,7 +90,7 @@ train:
   batch_size: 5600
   update_epochs: 10
   vf_coef: 0.5
-  ent_coef: 0.0
+  ent_coef: 0.01
   target_kl: 1.0
   lr_schedule: fixed
   repeat_samples: true

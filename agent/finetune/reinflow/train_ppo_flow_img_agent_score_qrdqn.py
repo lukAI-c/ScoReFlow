@@ -1,5 +1,5 @@
 # MIT License
-# Copyright (c) 2025 ReinFlow Authors - QR-DQN Extension
+# Copyright (c) 2026 ScoRe-Flow Authors - QR-DQN Extension
 
 """
 PPO Flow Agent with Image Input and QR-DQN Critic
