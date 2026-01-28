@@ -155,8 +155,13 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Unsupported plot_x_axis: {plot_x_axis}")
 
-    evaluation_name = 'TaskCompletionRate' if 'kitchen' in task_name else 'AverageEpisodeReward'
-
+    # evaluation_name = 'TaskCompletionRate' if 'kitchen' in task_name else 'AverageEpisodeReward'
+    if 'kitchen' in task_name:
+        evaluation_name = 'Task Completion Rate'
+    elif environment_name == 'robomimic-img' or task_name in ['can-img', 'square-img', 'transport-img']:
+        evaluation_name = 'Success Rate'
+    else:
+        evaluation_name = 'Average Episode Reward'
     # 创建图形
     sns.set_theme(style='whitegrid')
     fig, ax = plt.subplots(figsize=(10, 6))

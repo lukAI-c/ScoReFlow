@@ -52,6 +52,9 @@ color_dict = {
         # 新增: score 和 with_score 方法
         'ScoRe-Flow (ours)': "#4335FFD2",  # 橙红色
         'Score-SDE (ours)': '#00CED1',  # 深青色
+        'ScoRe-Flow (2 steps)': "#3B34FF",
+        'ScoRe-Flow (1 step)': "#FF6B6B",  # 浅红色 - 更明显
+        'ScoRe-Flow (4 steps)': "#35FF78D2",  # 蓝紫色 - 与 ScoRe-Flow (ours) 相同
     }
 
 
@@ -258,17 +261,25 @@ method_name_dict = {
             {'original_name': 'diffusion_mlp_img_ta4_td100_tdf5', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             # 新增: score 方法
             {'original_name': 'flow_mlp_img_score_ta4_td4_gamma1', 'display_name': 'Score-SDE (ours)', 'color': color_dict['Score-SDE (ours)']},
-            {'original_name': 'flow_mlp_img_with_score_gammanet_ta4_td4_tdf1', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
+            {'original_name': 'flow_mlp_img_with_score_gammanet_obs_ta4_td2_tdf1', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'square-img-logitbeta': [
             {'original_name': 'reflow_mlp_img_td4_td1_tdf1', 'display_name': 'uniform', 'color': color_dict['uniform']},
             {'original_name': 'reflow_logitnormal_mlp_img_td4_td1', 'display_name': 'logitnormal', 'color': color_dict['logitnormal']},
             {'original_name': 'reflow_mlp_img_ta4_td1_tdf1', 'display_name': 'beta', 'color': color_dict['beta']},
         ],
+        'square-img-denoise-steps': [
+            {'original_name': 'flow_mlp_img_with_score_gammanet_obs_ta4_td1_tdf1', 'display_name': 'ScoRe-Flow (1 step)', 'color': color_dict['ScoRe-Flow (1 step)']},
+            {'original_name': 'flow_mlp_img_with_score_gammanet_obs_ta4_td2_tdf1', 'display_name': 'ScoRe-Flow (2 steps)', 'color': color_dict['ScoRe-Flow (2 steps)']},
+            {'original_name': 'flow_mlp_img_with_score_gammanet_ta4_td4_tdf1', 'display_name': 'ScoRe-Flow (4 steps)', 'color': color_dict['ScoRe-Flow (4 steps)']},
+        ],
         'transport-img': [
             {'original_name': 'gaussian_mlp_img_ta8', 'display_name': 'Gaussian', 'color': color_dict['Gaussian']},
             {'original_name': 'diffusion_mlp_img_ta8_td100_tdf5', 'display_name': 'DPPO', 'color': color_dict['DPPO']},
             {'original_name': 'shortcut_mlp_img_ta8_td4_tdf4', 'display_name': 'ReinFlow-S', 'color': color_dict['ReinFlow-S (ours)']},
+            # 新增: score 方法
+            {'original_name': 'shortcut_mlp_img_score_ta8_td4', 'display_name': 'Score-SDE (ours)', 'color': color_dict['Score-SDE (ours)']},
+            {'original_name': 'shortcut_mlp_img_with_score_gammanet_obs_ta8_td4_tdf4', 'display_name': 'ScoRe-Flow (ours)', 'color': color_dict['ScoRe-Flow (ours)']},
         ],
         'kitchen-complete-v0': [
             {'original_name': 'fql_mlp_ta4_td4', 'display_name': 'FQL', 'color': color_dict['FQL']},
@@ -330,4 +341,5 @@ max_n_step_dict={
         'kitchen-partial-v0-denoise_step': np.float32('inf'),
         'kitchen-partial-v0-sigma_s_t': np.float32('inf'),
         'kitchen-mixed-v0': np.float32('inf'),
+        'square-img-denoise-steps': 300,
     }

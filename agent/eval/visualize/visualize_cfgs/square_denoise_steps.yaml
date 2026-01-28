@@ -1,0 +1,19 @@
+
+evaluation_name: 'SuccessRate'
+plot_x_axis: sample
+environment_name: "robomimic-img"
+task_name: "square-img-denoise-steps"
+env:
+  environment_name: ${environment_name}
+  robomimic-img:
+    task_name: ${task_name}
+    square-img-denoise-steps:
+      csv_filename: "compare-steps.csv"
+      re_expression: 'r''square_ft_(flow_mlp_img_with_score_gammanet(?:_obs)?_ta4_td\d+_tdf\d+)_seed(\d+)'''
+      n_parallel_envs: 50
+      n_rollout_steps: 400
+      n_act_steps: 4
+
+output_dir: 'visualize/Final_experiments/outs/robomimic-img/square-img-denoise-steps'
+output_filename: 'robomimic-img_square-img-denoise-steps_SuccessRate'
+

@@ -34,11 +34,12 @@ export PYOPENGL_PLATFORM="osmesa"
 
 # 2. 运行 Python basline
 python script/run.py \
-    --config-dir=cfg/robomimic/finetune/square \
-    --config-name=ft_ppo_shortcut_mlp_img \
+    --config-dir=cfg/robomimic/finetune/transport \
+    --config-name=ft_ppo_reflow_mlp_img \
+    base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/transport/ShortCut/state_750.pt \
     device=cuda:0 \
-    sim_device=null \
+    +sim_device=null \
     wandb.offline_mode=true \
-    env.n_envs=50
+    env.n_envs=1
 
 echo "Fine-tuning finished."

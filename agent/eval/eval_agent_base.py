@@ -399,6 +399,7 @@ class EvalAgent:
             avg_episode_reward_std = np.std(episode_reward)
             avg_best_reward = np.mean(episode_best_reward)
             avg_best_reward_std = np.std(episode_best_reward)
+            # 标准差
             success_rate = np.mean(
                 episode_best_reward >= self.best_reward_threshold_for_success
             )

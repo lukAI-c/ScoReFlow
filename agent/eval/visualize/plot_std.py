@@ -22,7 +22,7 @@ os.chdir(_PROJECT_ROOT)
 # ==================== 配置区域 ====================
 
 # CSV 文件路径
-CSV_PATH = 'visualize/Final_experiments/data/finetune/gym-state/ant-d4rl/ant-eps-compare.csv'
+CSV_PATH = 'visualize/Final_experiments/data/finetune/gym-state/ant-d4rl/wandb_export_2026-01-28T14_30_17.561+08_00.csv'
 
 # 方法配置：根据 wandb 运行的时间戳来区分不同的 std 初值
 # 格式: 'timestamp_prefix': {'display_name': 'xxx', 'color': 'xxx'}
@@ -30,7 +30,7 @@ CSV_PATH = 'visualize/Final_experiments/data/finetune/gym-state/ant-d4rl/ant-eps
 METHODS = {
     '2026-01-15_04-05-06': {'display_name': 'std=0.001', 'color': '#9b59b6'},   # 紫色
     '2026-01-15_06-28-12': {'display_name': 'std=0.01', 'color': '#3498db'},   # 蓝色
-    '2026-01-15_06-11-38': {'display_name': 'std=0.1', 'color': '#2ecc71'},   # 绿色
+    '2026-01-19_02-54-31': {'display_name': 'std=0.1', 'color': '#2ecc71'},   # 绿色
     '2026-01-16_03-05-33': {'display_name': 'std=1', 'color': '#e74c3c'},   # 红色
 }
 

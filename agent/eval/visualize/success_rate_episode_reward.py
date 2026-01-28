@@ -366,6 +366,13 @@ def extract_and_plot(evaluation_name,
         elif (environment_name=='robomimic-img' and task_name in ['can-img', 'square-img', 'transport-img']):
             # 不在主图上显示 legend，只在单独的 legend 文件中显示
             pass
+        elif environment_name=='robomimic-img' and task_name == 'square-img-denoise-steps':
+            # square-img-denoise-steps: 在主图上显示图例
+            desired_order = ['ScoRe-Flow (1 step)', 'ScoRe-Flow (2 steps)', 'ScoRe-Flow (4 steps)']
+            sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
+            sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
+            print(f"Reordered labels for legend={sorted_labels}")
+            ax.legend(sorted_handles, sorted_labels, loc='lower right', fontsize=21)
         elif environment_name=='gym-state' and task_name in ['hopper-d4rl', 'walker-d4rl', 'ant-d4rl', 'humanoid-d4rl']:
             # 不在主图上显示 legend，只在单独的 legend 文件中显示
             pass
@@ -405,7 +412,13 @@ def extract_and_plot(evaluation_name,
         legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=7)
     elif environment_name=='robomimic-img':
         # Robomimic 任务: 排序 legend
-        desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'Gaussian']
+        # desired_order = ['ScoRe-Flow (ours)', 'Score-SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'Gaussian']
+        if task_name == 'square-img-denoise-steps':
+            # 去噪步数对比任务: 按步数排序
+            desired_order = ['ScoRe-Flow (1 step)', 'ScoRe-Flow (2 steps)', 'ScoRe-Flow (4 steps)']
+        else:
+            # 其他 robomimic 任务
+            desired_order = ['ScoRe-Flow (ours)', 'Score-based SDE (ours)', 'ReinFlow-S', 'ReinFlow-R', 'DPPO', 'Gaussian']
         sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: desired_order.index(x[1]) if x[1] in desired_order else len(desired_order))
         sorted_handles, sorted_labels = zip(*sorted_handles_labels) if sorted_handles_labels else (handles, labels)
         legend_ax.legend(sorted_handles, sorted_labels, fontsize=30, loc='center', ncol=4)
