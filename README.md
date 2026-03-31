@@ -125,7 +125,6 @@ ScoRe-Flow achieves state-of-the-art performance on challenging image-based robo
 
 ```bash
 # Clone the repository
-git clone https://github.com/ScoRe-Flow/ScoRe-Flow.git
 cd ScoRe-Flow
 
 # Install as editable package (REQUIRED - enables running scripts from any directory)
