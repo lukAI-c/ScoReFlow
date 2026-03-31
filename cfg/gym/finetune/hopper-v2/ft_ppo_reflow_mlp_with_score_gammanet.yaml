@@ -39,7 +39,7 @@ score_clip_value: 10.0    # Score 裁剪值
 # Score Scheduler 参数 (基于时间的动态调度)
 use_score_scheduler: true           # 是否使用可学习的时间调度
 score_scheduler_hidden_dim: 16      # Schedule 网络隐藏层维度
-score_scheduler_type: 'mlp'         # 'mlp', 'linear', 'fixed'
+score_scheduler_type: 'linear'         # 'mlp', 'linear', 'fixed'
 env:
   n_envs: 40
   name: ${env_name}

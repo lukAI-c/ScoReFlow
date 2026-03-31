@@ -28,13 +28,13 @@
 echo "Starting OpenAI Gym Fine-tuning..."
 
 MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
-    --config-dir=cfg/gym/finetune/ant-v2 \
+    --config-dir=cfg/gym/finetune/walker2d-v2 \
     --config-name=ft_ppo_reflow_mlp_score \
-    base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/ant-v2/ReFlow/2025-03-29_19-23-57_D4RL_42/checkpoint/state_50.pt \
+    base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/walker2d-medium-v2_pre_reflow_mlp_ta4_td20_seed42/2025-12-06_03-05-56_42/checkpoint/last.pt \
     device=cuda:0 \
     sim_device=cuda:0 \
     wandb.offline_mode=false \
-    epsilon_t=0.05 \
-    seed=3407 \
+    epsilon_t=0.1 \
+    seed=521 \
 
 echo "Fine-tuning finished."

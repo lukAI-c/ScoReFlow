@@ -28,9 +28,10 @@
 # Robomimic Fine-tuning Script for ReinFlow (Image-based)
 echo "Starting Robomimic Fine-tuning with CPU rendering (OSMesa)..."
 
-# 1. 强制使用 CPU 渲染后端
-export MUJOCO_GL="osmesa"
-export PYOPENGL_PLATFORM="osmesa"
+export CUDA_VISIBLE_DEVICES=5,6
+# 设置 EGL 渲染默认卡，防止 Mujoco 将渲染上下文强行挂载到物理 0 卡
+export EGL_DEVICE_ID=6
+export MUJOCO_EGL_DEVICE_ID=6
 
 # 2. 运行 Python
 python script/run.py \
@@ -39,7 +40,6 @@ python script/run.py \
     base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/square_pre_reflow_mlp_img_ta4_td100/2025-12-10_08-22-54_42/checkpoint/last.pt \
     device=cuda:3 \
     sim_device=cuda:4 \
-    sim_device=null \
     wandb.offline_mode=true \
     env.n_envs=50 \
     denoising_steps=4 \

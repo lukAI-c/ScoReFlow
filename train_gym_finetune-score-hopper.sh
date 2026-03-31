@@ -35,7 +35,7 @@ MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
     device=cuda:0 \
     sim_device=cuda:0 \
     wandb.offline_mode=false \
-    epsilon_t=0.01 \
-    seed=0 \
+    epsilon_t=0.1 \
+    seed=2026 \
 
 echo "Fine-tuning finished."

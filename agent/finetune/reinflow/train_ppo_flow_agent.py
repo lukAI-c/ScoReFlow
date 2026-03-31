@@ -409,7 +409,7 @@ class TrainPPOFlowAgent(TrainPPOAgent):
             clipfrac, approx_kl, ratio, \
             oldlogprob_min, oldlogprob_max, oldlogprob_std, \
                 newlogprob_min, newlogprob_max, newlogprob_std, \
-                noise_std, Q_values= self.model.loss(*minibatch, 
+                noise_std, Q_values, alpha_curve_dict= self.model.loss(*minibatch, 
                                                     use_bc_loss=self.use_bc_loss, 
                                                     bc_loss_type=self.bc_loss_type, normalize_denoising_horizon=self.normalize_denoising_horizon, 
                                                     normalize_act_space_dimension=self.normalize_act_space_dim,
@@ -484,5 +484,8 @@ class TrainPPOFlowAgent(TrainPPOAgent):
                 "noise_std": noise_stds,
                 "Q_values": Q_values
             }
+        # --- 将接住的 alpha 的各个步长数据拼接到日志字典中一起发送给 wandb ---
+        if alpha_curve_dict is not None and isinstance(alpha_curve_dict, dict):
+            self.train_ret_dict.update(alpha_curve_dict)
     
     

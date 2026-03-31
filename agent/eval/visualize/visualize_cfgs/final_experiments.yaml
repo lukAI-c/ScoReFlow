@@ -9,7 +9,7 @@ env:
   kitchen:
     task_name: ${task_name}
     kitchen-complete-v0:
-      csv_filename: "all_methods_merged.csv"
+      csv_filename: "all_methods_merged_seed5.csv"
       re_expression: 'r''(?:kitchen-complete-v0)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 40
       n_rollout_steps: 200
@@ -33,7 +33,7 @@ env:
       n_rollout_steps: 200
       n_act_steps: 4
     kitchen-partial-v0:
-      csv_filename: "all_methods_merged.csv"
+      csv_filename: "all_methods_merged_final.csv"
       re_expression: 'r''(?:kitchen-partial-v0)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 40
       n_rollout_steps: 200
@@ -53,7 +53,7 @@ env:
       n_rollout_steps: 300
       n_act_steps: 4
     square-img:
-      csv_filename: "all_methods_merged2.csv" #"square-4-methods.csv"   #"square_suc_rate.csv"
+      csv_filename: "all_methods_merged_final.csv" #"all_methods_merged2.csv"
       re_expression: 'r''(?:square_ft)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 50
       n_rollout_steps: 400
@@ -65,7 +65,7 @@ env:
       n_rollout_steps: 400
       n_act_steps: 4
     transport-img:
-      csv_filename: "all_methods_merged2.csv"
+      csv_filename: "all_methods_merged_final.csv"
       re_expression: 'r''(?:transport_ft)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 50
       n_rollout_steps: 400
@@ -79,7 +79,7 @@ env:
       n_rollout_steps: 500
       n_act_steps: 4
     hopper-d4rl:
-      csv_filename: "all_methods_merged.csv" #"hopper_reward_shortcut_correct.csv" #"hopper_reward.csv"
+      csv_filename: "all_methods_merged_final.csv" #"hopper_reward_shortcut_correct.csv" #"hopper_reward.csv"
       re_expression: 'r''(?:hopper-medium-v2)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''  # be careful of the ' and '' and how we parse it as regular expression.
       n_parallel_envs: 40
       n_rollout_steps: 500
@@ -91,7 +91,7 @@ env:
       n_rollout_steps: 500
       n_act_steps: 4
     walker-d4rl:
-      csv_filename: "all_methods_merged.csv" #"walker_reward_shortcut_correct.csv" #"walker_reward.csv"
+      csv_filename: "all_methods_merged_final.csv" #"walker_reward_shortcut_correct.csv" #"walker_reward.csv"
       re_expression: 'r''(?:walker2d-medium-v2)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''
       n_parallel_envs: 40
       n_rollout_steps: 500
@@ -109,19 +109,19 @@ env:
       n_rollout_steps: 500
       n_act_steps: 4
     ant-d4rl:
-      csv_filename: "all_methods_merged.csv"  #"ant_reward_shortcut_correct.csv" #"ant_reward.csv"
+      csv_filename: "all_methods_merged_final.csv"  #"ant_reward_shortcut_correct.csv" #"ant_reward.csv"
       re_expression: 'r''(?:ant-medium-expert-v2)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''
       n_parallel_envs: 40
       n_rollout_steps: 500
       n_act_steps: 4
     humanoid:
-      csv_filename: "humanoid_4_methods.csv"  #"humanoid_reward_shortcut_betalogit.csv" # "humanoid_reward.csv"
+      csv_filename: "all_methods_merged_final.csv"  #"humanoid_reward_shortcut_betalogit.csv" # "humanoid_reward.csv"
       re_expression: 'r''(?:Humanoid-medium-v3)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''
       n_parallel_envs: 40
       n_rollout_steps: 500
       n_act_steps: 4
     humanoid-d4rl:
-      csv_filename: "all_methods_merged.csv"  #"humanoid_reward_shortcut_betalogit.csv" # "humanoid_reward.csv"
+      csv_filename: "all_methods_merged_final.csv"  #"humanoid_reward_shortcut_betalogit.csv" # "humanoid_reward.csv"
       re_expression: 'r''(?:Humanoid-medium-v3)_(.*?)(?:_seed(\d+)|_(\d+)|-(\d+))(?: - .*)?$'''
       n_parallel_envs: 40
       n_rollout_steps: 500

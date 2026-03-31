@@ -605,7 +605,23 @@ class PPOFlowWithScore(nn.Module, ScoreFunctionMixin):
                 a_new = self.actor_ft.policy.sample_action(cond=obs, inference_steps=self.inference_steps,
                                                            clip_intermediate_actions=True, act_range=[self.act_min, self.act_max], z=z)
                 bc_loss = F.mse_loss(a_old.detach(), a_new)
-
+                
+                # --- 新增：严格按照 FM 的实际推断离散步数记录 alpha_t ---
+        alpha_curve_dict = {}
+        if self.score_scheduler is not None:
+            with torch.no_grad():
+                # 严格使用与 get_actions / get_logprobs 完全相同的离散 t 序列
+                dt = 1.0 / self.inference_steps
+                t_exact_steps = torch.linspace(0, 1 - dt, self.inference_steps, device=self.device)
+                
+                # 获取实际推理时用的那几个离散点上的 alpha_t
+                alpha_vals = self.get_alpha_t(t_exact_steps).squeeze().cpu().numpy()
+                t_numpy = t_exact_steps.cpu().numpy()
+                
+                # 格式化存入字典 (如 inference_steps 是 10，就是 step_00_t=0.00 到 step_09_t=0.90)
+                for step_idx, (t_val, a_val) in enumerate(zip(t_numpy, alpha_vals)):
+                    # 加入 step 索引保证顺序，也能看到具体的 t 值
+                    alpha_curve_dict[f"alpha_t/step_{step_idx:02d}_t={t_val:.2f}"] = float(a_val)
         return (
             pg_loss,
             entropy_loss,
@@ -622,5 +638,6 @@ class PPOFlowWithScore(nn.Module, ScoreFunctionMixin):
             newlogprobs.std(),
             noise_std.item(),
             newvalues.mean().item(),
+            alpha_curve_dict,
         )
 
