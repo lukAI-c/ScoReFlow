@@ -148,8 +148,9 @@ For detailed installation instructions, see [installation/reinflow-setup.md](./i
 
 ```bash
 # Image-based task with Score-SDE (GammaNet)
-export MUJOCO_GL="osmesa"
-export PYOPENGL_PLATFORM="osmesa"
+export CUDA_VISIBLE_DEVICES=0,1
+export EGL_DEVICE_ID=1
+export MUJOCO_EGL_DEVICE_ID=1
 
 python script/run.py \
     --config-dir=cfg/robomimic/finetune/square \
