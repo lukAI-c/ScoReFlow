@@ -3,7 +3,7 @@
 > **ScoRe-Flow: Complete Distributional Control via Score-Based Reinforcement Learning for Flow Matching**
 
 <p align="center">
-  <img src="sample_figs/schematic.png" alt="ScoRe-Flow Architecture" width="75%">
+  <img src="sample_figs/overview_v2.png" alt="ScoRe-Flow Architecture" width="75%">
 </p>
 
 ---
