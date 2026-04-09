@@ -30,8 +30,8 @@ echo "============================================================"
 
 python run.py \
     --config-dir=cfg/gym/eval/kitchen-partial-v0 \
-    --config-name=eval_shortcut_score_gammanet \
-    base_policy_path=${REINFLOW_LOG_DIR}/gym/finetune/kitchen-partial-v0_ppo_shortcut_mlp_with_score_gammanet_obs_ta4_td8_tdf4/2026-01-24_03-48-51_seed42/checkpoint/best.pt \
+    --config-name=eval_shortcut_score_alphanet \
+    base_policy_path=${REINFLOW_LOG_DIR}/gym/finetune/kitchen-partial-v0_ppo_shortcut_mlp_with_score_alphanet_obs_ta4_td8_tdf4/2026-01-24_03-48-51_seed42/checkpoint/best.pt \
     device=cuda:0 \
     denoising_step_list=$DENOISING_STEPS \
     +render_onscreen=false \

@@ -42,7 +42,7 @@ echo "=========================================================="
 if [ "${TASK}" = "humanoid" ]; then
     MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python run.py \
         --config-dir=cfg/gym/finetune/Humanoid-v3 \
-        --config-name=ft_ppo_reflow_mlp_with_score_gammanet_frozen_v \
+        --config-name=ft_ppo_reflow_mlp_with_score_alphanet_frozen_v \
         base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/Humanoid-medium-v3_pre_reflow_mlp_ta4_td20_seed42/2025-12-26_03-33-44_42/checkpoint/best.pt \
         device=${DEVICE} \
         sim_device=${SIM_DEVICE} \
@@ -56,7 +56,7 @@ if [ "${TASK}" = "humanoid" ]; then
 elif [ "${TASK}" = "kitchen" ]; then
     MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python run.py \
         --config-dir=cfg/gym/finetune/kitchen-complete-v0 \
-        --config-name=ft_ppo_shortcut_mlp_with_score_gammanet_frozen_v \
+        --config-name=ft_ppo_shortcut_mlp_with_score_alphanet_frozen_v \
         base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/kitchen-complete-v0_pre_shortcut_mish_mlp_ta4_td4/2025-05-05_19-59-19_42/checkpoint/state_1500.pt \
         device=${DEVICE} \
         sim_device=${SIM_DEVICE} \

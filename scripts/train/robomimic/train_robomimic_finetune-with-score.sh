@@ -44,7 +44,7 @@ echo "Starting Robomimic Fine-tuning with CPU rendering (OSMesa)..."
 # 2. 运行 Python
 python run.py \
     --config-dir=cfg/robomimic/finetune/square \
-    --config-name=ft_ppo_reflow_mlp_img_with_score_gammanet_obs \
+    --config-name=ft_ppo_reflow_mlp_img_with_score_alphanet_obs \
     base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/square_pre_reflow_mlp_img_ta4_td100/2025-12-10_08-22-54_42/checkpoint/last.pt \
     device=cuda:0 \
     sim_device=cuda:1 \
@@ -68,7 +68,7 @@ echo "Fine-tuning finished."
 
 # python run.py \
 #     --config-dir=cfg/robomimic/finetune/transport \
-#     --config-name=ft_ppo_shortcut_mlp_img_with_score_gammanet_obs \
+#     --config-name=ft_ppo_shortcut_mlp_img_with_score_alphanet_obs \
 #     base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/transport/ShortCut/state_750.pt \
 #     device=cuda:5 \
 #     sim_device=cuda:6 \

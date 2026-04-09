@@ -127,23 +127,23 @@ ScoReFlow 提供 4 类微调入口:
 | 类型 | 说明 | 配置名约定 |
 |---|---|---|
 | **PPO 基线** | drift-only,无 score | `ft_ppo_*_mlp[*_img]` |
-| **PPO + Score-SDE + GammaNet (本工作)** | 联合优化 drift + diffusion | `ft_ppo_*_with_score_gammanet[*_obs]` |
+| **PPO + Score-SDE + AlphaNet (本工作)** | 联合优化 drift + diffusion | `ft_ppo_*_with_score_alphanet[*_obs]` |
 | **GRPO 基线** | critic-free,组相对优势 | `ft_grpo_*_mlp[*_img]` |
-| **GRPO + Score-SDE + GammaNet (本工作)** | GRPO + GammaNet 组合 | `ft_grpo_*_with_score_gammanet` |
+| **GRPO + Score-SDE + AlphaNet (本工作)** | GRPO + AlphaNet 组合 | `ft_grpo_*_with_score_alphanet` |
 
 ### 4.1 Robomimic (image)
 
 ```bash
-# PPO + ScoReFlow GammaNet
+# PPO + ScoReFlow AlphaNet
 bash scripts/train/robomimic/train_robomimic_finetune-with-score.sh
 
-# GRPO + ScoReFlow GammaNet (critic-free)
+# GRPO + ScoReFlow AlphaNet (critic-free)
 TASK=square    SEED=42 KL_COEF=0.2 bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
 TASK=transport SEED=42 KL_COEF=0.2 bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
 
 # 直接调 run.py 也可以
 python run.py --config-dir=cfg/robomimic/finetune/square \
-              --config-name=ft_ppo_reflow_mlp_img_with_score_gammanet_obs \
+              --config-name=ft_ppo_reflow_mlp_img_with_score_alphanet_obs \
               base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/.../last.pt \
               device=cuda:0 sim_device=cuda:1 \
               wandb.offline_mode=true \
@@ -203,7 +203,7 @@ bash scripts/eval/robomimic/eval_robomimic_finetune.sh
 
 # 等价于
 python run.py --config-dir=cfg/robomimic/eval/can \
-              --config-name=eval_reflow_mlp_img_with_score_gammanet \
+              --config-name=eval_reflow_mlp_img_with_score_alphanet \
               base_policy_path=${REINFLOW_LOG_DIR}/robomimic/finetune/.../best.pt \
               device=cuda:0 \
               denoising_step_list=[1,2,4,8] \
@@ -275,7 +275,7 @@ export MUJOCO_EGL_DEVICE_ID=4
 
 | 超参 | 适用 | 推荐值 | 含义 |
 |---|---|---|---|
-| `gamma_score` | PPO+Score / GRPO+Score | `1.0` | GammaNet $\alpha_\psi$ 初始尺度 |
+| `gamma_score` | PPO+Score / GRPO+Score | `1.0` | AlphaNet $\alpha_\psi$ 初始尺度 |
 | `denoising_steps` | 全部 | `2 (square) / 4 (transport,kitchen)` | 去噪步数 |
 | `train.kl_coef` | GRPO | `0.04 (state) / 0.2 (image)` | GRPO KL 惩罚系数 |
 | `train.ent_coef` | 全部 | `0.01 (image) / 0.03 (state)` | 熵正则 |

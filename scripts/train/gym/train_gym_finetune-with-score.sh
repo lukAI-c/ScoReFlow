@@ -29,7 +29,7 @@ echo "Starting OpenAI Gym Fine-tuning..."
 
 MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python run.py \
     --config-dir=cfg/gym/finetune/Humanoid-v3 \
-    --config-name=ft_ppo_reflow_mlp_with_score_gammanet \
+    --config-name=ft_ppo_reflow_mlp_with_score_alphanet \
     base_policy_path=${REINFLOW_LOG_DIR}/gym/pretrain/Humanoid-medium-v3_pre_reflow_mlp_ta4_td20_seed42/2025-12-26_03-33-44_42/checkpoint/best.pt \
     device=cuda:0 \
     sim_device=cuda:0 \

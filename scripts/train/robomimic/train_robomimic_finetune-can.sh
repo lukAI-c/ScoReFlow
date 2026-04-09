@@ -9,7 +9,7 @@ export MUJOCO_EGL_DEVICE_ID=4
 # 2. 运行 Python
 python run.py \
     --config-dir=cfg/robomimic/finetune/can \
-    --config-name=ft_ppo_reflow_mlp_img_with_score_gammanet \
+    --config-name=ft_ppo_reflow_mlp_img_with_score_alphanet \
     base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/can/can_pre_reflow_mlp_img_ta4_td100/2025-12-29_14-07-21_42/checkpoint/last.pt \
     device=cuda:0 \
     sim_device=cuda:1 \

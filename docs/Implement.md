@@ -6,49 +6,50 @@
 
 ---
 
-## 1. ScoReFlow (Score-SDE + GammaNet) — 本项目核心方法
+## 1. ScoReFlow (Score-SDE + AlphaNet) — 本项目核心方法
 
-ScoReFlow 在 flow matching 策略的 RL 微调中,联合优化 drift(速度场)与 diffusion(噪声),通过解析推导的 score 函数 + 一个轻量可学习的时间调度网络 **GammaNet** 实现完全分布控制。
+联合优化 drift(速度场)与 diffusion(噪声),通过解析推导的 score 函数 + 一个轻量可学习的时间调度网络 **AlphaNet** $\alpha_\psi(t)$ 实现完全分布控制。
 
-策略更新遵循:
 $$
 dx_t = \big[v_\theta(x_t,t) + \alpha_\psi(t)\cdot s(x_t,t)\big]\,dt + \sqrt{2\,\alpha_\psi(t)}\,dW_t
 $$
 
-其中 $s(x_t,t)=\dfrac{t\cdot v_\theta-x_t}{1-t}$ 为解析 score, $\alpha_\psi(t)$ 是 GammaNet。
+其中 $s(x_t,t)=\dfrac{t\cdot v_\theta-x_t}{1-t}$ 为解析 score。
 
 ### 关键代码
 
 | 组件 | 路径 |
 |---|---|
-| 1-ReFlow + Score-SDE + GammaNet | [`model/flow/ft_ppo/ppoflow_with_score_gammanet.py`](../model/flow/ft_ppo/ppoflow_with_score_gammanet.py) |
-| ShortCut + Score-SDE + GammaNet | [`model/flow/ft_ppo/pposhortcut_with_score_gammanet.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet.py) |
-| 通用 score 函数计算 | [`model/flow/score_utils.py`](../model/flow/score_utils.py) |
-| 训练 agent (state) | [`agent/finetune/reinflow/train_ppo_flow_agent_score.py`](../agent/finetune/reinflow/train_ppo_flow_agent_score.py) |
-| 训练 agent (image) | [`agent/finetune/reinflow/train_ppo_flow_img_agent_score.py`](../agent/finetune/reinflow/train_ppo_flow_img_agent_score.py) |
-| ShortCut GammaNet agent | [`agent/finetune/reinflow/train_ppo_shortcut_gammanet_agent.py`](../agent/finetune/reinflow/train_ppo_shortcut_gammanet_agent.py) |
+| 1-ReFlow + Score-SDE + AlphaNet | [`ppoflow_with_score_gammanet.py`](../model/flow/ft_ppo/ppoflow_with_score_gammanet.py) |
+| ShortCut + Score-SDE + AlphaNet | [`pposhortcut_with_score_gammanet.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet.py) |
+| 通用 score 函数计算 | [`score_utils.py`](../model/flow/score_utils.py) |
+| 训练 agent (state) | [`train_ppo_flow_agent_score.py`](../agent/finetune/reinflow/train_ppo_flow_agent_score.py) |
+| 训练 agent (image) | [`train_ppo_flow_img_agent_score.py`](../agent/finetune/reinflow/train_ppo_flow_img_agent_score.py) |
+| ShortCut AlphaNet agent | [`train_ppo_shortcut_gammanet_agent.py`](../agent/finetune/reinflow/train_ppo_shortcut_gammanet_agent.py) |
+
+> 注:Python 文件名/类名中仍用 `gammanet`,配置文件(yaml / sh)已统一改为 `alphanet`。
 
 ### ScoReFlow 专属超参
 
 - `gamma_score`:score 引导的整体强度 $\alpha_\psi$ 的初始尺度。常用 `1.0`,可在 `[0.1, 2.0]` 之间扫。
-- `score_scheduler_type`:GammaNet 时间调度类型(代码里默认 `learn`)。
-- `model.gamma_net.hidden_dims`:GammaNet 隐藏层维度,默认轻量 `[32, 32]` 即可。
+- `score_scheduler_type`:AlphaNet 时间调度类型(代码里默认 `learn`)。
+- `model.gamma_net.hidden_dims`:AlphaNet 隐藏层维度,默认 `[32, 32]`。
 - `model.gamma_net.activation`:激活函数,默认 `silu`,末端 `softplus` 保证 $\alpha\geq 0$。
-- 边界处理:GammaNet 对 $t=1$ 处做 `(1-t)` 硬掩码,防止 $s(x_t,t)$ 在终点的奇异性。
+- 边界处理:对 $t=1$ 处做 `(1-t)` 硬掩码,防止 score 在终点的奇异性。
 
 ### 与已有方法的关系
 
 | 方法 | 是否有 score | $\alpha$ 是否可学 | 配置示例 |
 |---|---|---|---|
-| ReinFlow / DPPO | ❌(只改 drift) | — | `ft_ppo_reflow_mlp.yaml` |
-| Fixed Score-SDE | ✅ | ❌ 常数 | `ft_ppo_*_with_score_gammanet_const.yaml` |
-| ScoReFlow (本项目) | ✅ | ✅ GammaNet | `ft_ppo_*_with_score_gammanet.yaml` |
+| ReinFlow / DPPO | 否(只改 drift) | — | `ft_ppo_reflow_mlp.yaml` |
+| Fixed Score-SDE | 是 | 否(常数) | `ft_ppo_*_with_score_alphanet_const.yaml` |
+| ScoReFlow | 是 | 是(AlphaNet) | `ft_ppo_*_with_score_alphanet.yaml` |
 
 ### 几个常见 ablation 配置入口
 
-- **冻结 v_θ 只学 GammaNet**:[`pposhortcut_with_score_gammanet_frozen_v.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet_frozen_v.py)
-- **GammaNet 用观测条件**:[`ppoflow_with_score_gammanet_obs.py`](../model/flow/ft_ppo/ppoflow_with_score_gammanet_obs.py)
-- **GammaNet 与 v_θ 解耦的双路损失**:[`pposhortcut_with_score_gammanet_dloss.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet_dloss.py)
+- **冻结 v_θ 只学 AlphaNet**:[`pposhortcut_with_score_gammanet_frozen_v.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet_frozen_v.py)
+- **AlphaNet 用观测条件**:[`ppoflow_with_score_gammanet_obs.py`](../model/flow/ft_ppo/ppoflow_with_score_gammanet_obs.py)
+- **AlphaNet 与 v_θ 解耦的双路损失**:[`pposhortcut_with_score_gammanet_dloss.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet_dloss.py)
 
 ---
 
@@ -67,7 +68,7 @@ $$
 | GRPO 经验回放 buffer | [`agent/finetune/reinflow/buffer_grpo.py`](../agent/finetune/reinflow/buffer_grpo.py) |
 | GRPO 训练 agent (state) | [`agent/finetune/reinflow/train_grpo_flow_agent.py`](../agent/finetune/reinflow/train_grpo_flow_agent.py) |
 | GRPO 训练 agent (image) | [`agent/finetune/reinflow/train_grpo_flow_img_agent.py`](../agent/finetune/reinflow/train_grpo_flow_img_agent.py) |
-| GRPO + Score-SDE 模型 | [`model/flow/ft_ppo/grpoflow_with_score_gammanet.py`](../model/flow/ft_ppo/grpoflow_with_score_gammanet.py) |
+| GRPO + Score-SDE 模型 | [`grpoflow_with_score_gammanet.py`](../model/flow/ft_ppo/grpoflow_with_score_gammanet.py) |
 | GRPO 基线模型 | [`model/flow/ft_ppo/grpoflow.py`](../model/flow/ft_ppo/grpoflow.py) |
 
 ### GRPO 专属超参
