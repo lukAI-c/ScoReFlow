@@ -28,7 +28,7 @@ echo "============================================================"
 DENOISING_STEPS="[4]"
 echo "============================================================"
 
-python script/run.py \
+python run.py \
     --config-dir=cfg/gym/eval/kitchen-complete-v0 \
     --config-name=eval_reinflow_mlp \
     base_policy_path=${REINFLOW_LOG_DIR}/gym/finetune/kitchen-complete-v0_ppo_reflow_mlp_ta4_td4_tdf4/2025-12-24_05-33-22_seed42/checkpoint/best.pt\

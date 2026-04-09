@@ -10,7 +10,7 @@ PPO ShortCut Agent with Score GammaNet and Stein Diversity Loss
 2. Stein Diversity Loss (斯坦因斥力项) 用于跳出局部最优
 
 运行示例:
-    python script/run.py --config-dir=cfg/gym/finetune/kitchen-complete-v0 \
+    python run.py --config-dir=cfg/gym/finetune/kitchen-complete-v0 \
         --config-name=ft_ppo_shortcut_mlp_with_score_gammanet
 
 核心特性:

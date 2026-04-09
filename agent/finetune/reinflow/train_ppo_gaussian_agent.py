@@ -25,7 +25,7 @@
 PPO training for Gaussian/GMM policy.
 Run this line to train a gaussian policy from scratch: 
 
-python script/run.py --config-dir=cfg/gym/scratch/hopper-v2 --config-name=ppo_gaussian_mlp device=cuda:6 wandb=null
+python run.py --config-dir=cfg/gym/scratch/hopper-v2 --config-name=ppo_gaussian_mlp device=cuda:6 wandb=null
 """
 import torch
 import logging

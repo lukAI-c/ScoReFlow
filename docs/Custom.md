@@ -1,27 +1,56 @@
+## 自定义数据集 / 环境
 
+### 预训练数据
 
-## Adding your own dataset or environment
+预训练入口为 [`agent/pretrain/train_diffusion_agent.py`](../agent/pretrain/train_diffusion_agent.py),数据加载器在 [`agent/dataset/sequence.py`](../agent/dataset/sequence.py)。数据集需要是 `.npz` 文件,包含以下 numpy 数组:
 
+| 字段 | 形状 | 说明 |
+|---|---|---|
+| `states` | `num_total_steps × obs_dim` | 状态序列 |
+| `actions` | `num_total_steps × act_dim` | 动作序列 |
+| `images` | `num_total_steps × C × H × W` | 图像观测(可选,多相机时通道维拼接;`H == W` 且为 8 的倍数) |
+| `traj_lengths` | `1-D` | 用于切分轨迹边界的索引 |
 
-### Pre-training data
+#### 用现成的 D4RL 数据(Gym / Kitchen)
 
-Pre-training script is at [`agent/pretrain/train_diffusion_agent.py`](agent/pretrain/train_diffusion_agent.py). The pre-training dataset [loader](agent/dataset/sequence.py) assumes a npz file containing numpy arrays `states`, `actions`, `images` (if using pixel; img_h = img_w and a multiple of 8) and `traj_lengths`, where `states` and `actions` have the shape of num_total_steps x obs_dim/act_dim, `images` num_total_steps x C (concatenated if multiple images) x H x W, and `traj_lengths` is a 1-D array for indexing across num_total_steps.
+从 [Hugging Face 镜像](https://huggingface.co/datasets/imone/D4RL/tree/main) 下载 raw `.hdf5`,然后用本仓库的工具脚本转 `.npz`:
 
-<!-- One pre-processing example can be found at [`script/process_robomimic_dataset.py`](script/process_robomimic_dataset.py). -->
-<!-- **Note:** The current implementation does not support loading history observations (only using observation at the current timestep). If needed, you can modify [here](agent/dataset/sequence.py#L130-L131). -->
+```bash
+# 1. 查看 hdf5 内部结构
+python data_process/read_hdf5.py --file_path=<PATH_TO_YOUR_HDF5>
 
-For OpenAI Gym and Franka Kitchen tasks, you can download raw datasets from [D4RL datasets](https://huggingface.co/datasets/imone/D4RL/tree/main), and then run `python data_process/hdf5_to_npz_wrapped.py --data_path=<PATH_TO_YOUR_OFFLINE_RL_DATASET>` to convert raw hdf5 to normalized train.npz and normalization.npz files in the same directory. 
+# 2. 转 npz + 归一化到 [-1, 1],输出 train.npz / normalization.npz
+python data_process/hdf5_to_npz.py --data_path=<PATH_TO_YOUR_HDF5>
 
-To inspect the contents and ranges of the train.npz file, run 
+# 3. 检查转换结果
+python data_process/read_npz.py --data_path=<DIR>/train.npz
 ```
-python data_process/read_npz.py --data_path=<PATH_TO_YOUR_OFFLINE_RL_DATASET_DIR>/train.npz
+
+> 也可以直接在预训练命令里加 `use_d4rl_dataset=True`,会自动下载并处理。
+
+#### Robomimic 图像数据
+
+在预训练命令里 `cfg/robomimic/pretrain/<task>/pre_*.yaml` 已配置好下载链接,首次运行 `python run.py --config-dir=cfg/robomimic/pretrain/square --config-name=pre_shortcut_mlp_img` 会自动从 Google Drive 拉取数据集与归一化统计。
+
+### 历史观测
+
+ScoReFlow 默认只使用当前时刻的观测,但代码已支持历史观测拼接。在配置里设置:
+
+```yaml
+cond_steps: 4         # 状态历史步数
+img_cond_steps: 2     # 图像历史步数(必须 ≤ cond_steps)
 ```
 
+预训练和微调时保持一致即可。
 
-### Observation history
+### 微调环境
 
-In our experiments we did not use any observation from previous timesteps (state or pixel), but it is implemented. You can set `cond_steps=<num_state_obs_step>` (and `img_cond_steps=<num_img_obs_step>`, no larger than `cond_steps`) in pre-training, and set the same when fine-tuning the newly pre-trained policy.
+环境遵循 Gym 接口。向量化环境初始化入口在 [`env/gym_utils/__init__.py:make_async`](../env/gym_utils/__init__.py),由父类 [`agent/finetune/train_agent.py`](../agent/finetune/train_agent.py) 调用。
 
-### Fine-tuning environment
+ScoReFlow 实际使用的 wrapper:
+- [`env/gym_utils/wrapper/multi_step.py`](../env/gym_utils/wrapper/multi_step.py) — 历史观测堆叠 + 多步动作执行
+- [`env/gym_utils/wrapper/robomimic_lowdim.py`](../env/gym_utils/wrapper/robomimic_lowdim.py) — Robomimic 状态归一化
+- [`env/gym_utils/wrapper/mujoco_locomotion_lowdim.py`](../env/gym_utils/wrapper/mujoco_locomotion_lowdim.py) — D4RL Gym/Kitchen 归一化
 
-We follow the Gym format for interacting with the environments. The vectorized environments are initialized at [make_async](env/gym_utils/__init__.py#L10) (called in the parent fine-tuning agent class [here](agent/finetune/train_agent.py#L38-L39)). The current implementation is not the cleanest as we tried to make it compatible with Gym, Robomimic, Furniture-Bench, and D3IL environments, but it should be easy to modify and allow using other environments. We use [multi_step](env/gym_utils/wrapper/multi_step.py) wrapper for history observations and multi-environment-step action execution. We also use environment-specific wrappers such as [robomimic_lowdim](env/gym_utils/wrapper/robomimic_lowdim.py) and [furniture](env/gym_utils/wrapper/furniture.py) for observation/action normalization, etc. You can implement a new environment wrapper if needed.
+要接入新环境,实现一个新的 wrapper 并在 `make_async` 中加分支即可。
+

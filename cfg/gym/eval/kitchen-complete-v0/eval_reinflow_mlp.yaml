@@ -4,7 +4,7 @@
 # 使用 NoisyFlowMLP 和可学习的噪声网络进行探索
 #
 # 使用方法:
-#   python script/run.py --config-dir=cfg/gym/eval/kitchen-complete-v0 --config-name=eval_reinflow_mlp \
+#   python run.py --config-dir=cfg/gym/eval/kitchen-complete-v0 --config-name=eval_reinflow_mlp \
 #       base_policy_path=<your_checkpoint_path>
 #
 defaults:

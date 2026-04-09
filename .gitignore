@@ -9,6 +9,7 @@ README-old.md
 square_grid_search/
 .vscode/
 data/
+!data/.gitkeep
 data-offline/
 agent_old/
 model_old/
@@ -17,6 +18,7 @@ log_old_success/
 log_gym_d4rl/
 misc/
 logs/
+!logs/.gitkeep
 checkpoints/
 .github/
 out/

@@ -2,7 +2,7 @@
 # 用于评估使用 CFG 引导的 Dual-Stream 微调模型
 #
 # 使用方法:
-#   python script/run.py --config-dir=cfg/gym/eval/kitchen-complete-v0 --config-name=eval_dual_stream_mlp \
+#   python run.py --config-dir=cfg/gym/eval/kitchen-complete-v0 --config-name=eval_dual_stream_mlp \
 #       base_policy_path=<your_checkpoint_path>
 #
 defaults:

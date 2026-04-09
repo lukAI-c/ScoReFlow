@@ -11,7 +11,7 @@ export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so
 # env.n_envs=1 : 强制单进程，防止 XIO error
 # MESA_... : 伪装显卡驱动版本
 
-python script/run.py \
+python run.py \
     --config-dir="cfg/gym/eval/hopper-medium-v2" \
     --config-name="eval_reflow_mlp" \
     base_policy_path="$CHECKPOINT_PATH" \

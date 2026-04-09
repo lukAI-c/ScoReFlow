@@ -5,7 +5,7 @@ echo "Resuming Robomimic Fine-tuning..."
 export MUJOCO_GL="osmesa"
 export PYOPENGL_PLATFORM="osmesa"
 
-python script/run.py \
+python run.py \
     --config-dir=cfg/robomimic/finetune/square \
     --config-name=ft_ppo_reflow_mlp_img_score_distribute_qrdqn \
     base_policy_path=${REINFLOW_LOG_DIR}/robomimic/finetune/square_ppo_reflow_mlp_score_qrdqn_ta4_td4/2026-01-06_11-43-45_gamma1_42/checkpoint/last.pt\

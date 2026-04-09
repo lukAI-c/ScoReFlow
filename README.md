@@ -152,7 +152,7 @@ export CUDA_VISIBLE_DEVICES=0,1
 export EGL_DEVICE_ID=1
 export MUJOCO_EGL_DEVICE_ID=1
 
-python script/run.py \
+python run.py \
     --config-dir=cfg/robomimic/finetune/square \
     --config-name=ft_ppo_shortcut_mlp_img_with_score_gammanet \
     device=cuda:0 \
@@ -165,7 +165,7 @@ python script/run.py \
 
 ```bash
 # State-based task with Score-SDE
-MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
+MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python run.py \
     --config-dir=cfg/gym/finetune/kitchen-complete-v0 \
     --config-name=ft_ppo_shortcut_mlp_with_score_gammanet \
     device=cuda:0 \
@@ -176,45 +176,83 @@ MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python script/run.py \
 ### Evaluation
 
 ```bash
-bash script/eval/robomimic.sh
+# 所有 .sh 必须从项目根目录调用 (它们内部使用相对路径 cfg/... 和 run.py)
+bash scripts/eval/robomimic/eval_robomimic_finetune.sh
 ```
 
 ---
 
 ## Project Structure
 
+> 重构说明 (2026-04):根目录下大量历史 `train_*.sh` / `eval_*.sh` 已按任务分类搬迁到 `scripts/{train,eval}/{robomimic,gym,kitchen}/`;
+> 原 `script/` 目录已移除,Python 入口 `run.py` 提升至项目根;`mjrl-master` / `d4rl` 收纳至 `external_libs/`。
+> **所有 .sh 仍需从项目根目录运行** (例如 `bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh`)。
+
 ```
 ScoRe-Flow/
-├── agent/                      # Training and evaluation agents
-│   ├── pretrain/               # Pre-training agents
-│   ├── finetune/               # Fine-tuning agents
-│   │   └── reinflow/           # PPO-based RL fine-tuning
-│   │       ├── train_ppo_flow_agent.py           # Gym state agent
-│   │       ├── train_ppo_flow_img_agent.py       # Robomimic image agent
-│   │       └── train_ppo_shortcut_gammanet_agent.py  # GammaNet agent
-│   └── eval/                   # Evaluation & visualization
-│       └── visualize/          # Plotting scripts
-├── model/                      # Neural network architectures
-│   └── flow/
-│       ├── ft_ppo/             # RL fine-tuning models
-│       │   ├── ppoflow_score.py                  # Score-SDE (fixed schedule)
-│       │   ├── ppoflow_with_score_gammanet.py    # Score-SDE + GammaNet (ours)
-│       │   ├── pposhortcut_with_score_gammanet.py # ShortCut + GammaNet (ours)
-│       │   ├── ppoflow_score_mlp.py              # Score-SDE + EpsNet (coupled)
-│       │   └── pposhortcut_score_mlp.py          # ShortCut + EpsNet (coupled)
-│       ├── mlp_flow.py         # FlowMLP, NoisyFlowMLP, VisionFlowMLP
-│       ├── mlp_shortcut.py     # ShortCutFlowMLP, NoisyShortCutFlowMLP
-│       └── score_utils.py      # ScoreFunctionMixin (score computation)
-├── cfg/                        # Hydra configuration files
-│   ├── gym/                    # D4RL Gym & Kitchen configs
-│   └── robomimic/              # Robomimic configs
-├── env/                        # Environment wrappers
-├── script/                     # Training and utility scripts
-├── visualize/                  # Experimental data and output figures
-│   └── Final_experiments/
-│       ├── data/               # CSV data from wandb
-│       └── outs/               # Generated plots (PDF + PNG)
-└── sample_figs/                # Demo videos and overview figure
+├── run.py                      # 🚀 统一 Python 入口 (Hydra 启动)
+├── download_url.py             # 数据/checkpoint 下载 URL 表 (run.py 依赖)
+├── download_checkpoints.py     # 单独下载预训练权重的 CLI
+│
+├── scripts/                    # 🌟 所有 Bash 启动/调度脚本
+│   ├── train/
+│   │   ├── robomimic/          # 替代根目录所有 train_robomimic_*.sh / train_square_*.sh
+│   │   ├── gym/                # 替代根目录所有 train_gym_*.sh
+│   │   └── kitchen/            # 替代根目录所有 train_kitchen_*.sh
+│   ├── eval/
+│   │   ├── robomimic/          # 替代根目录所有 eval_robomimic_*.sh
+│   │   ├── gym/                # eval_gym.sh
+│   │   └── kitchen/            # eval_kitchen*.sh
+│   └── utils/                  # activate.sh, set_path.sh, 渲染测试, 数据预处理脚本
+│       └── dataset/            # filter/process_d3il, get_d4rl, process_robomimic
+│
+├── cfg/                        # ⚙️ Hydra 配置 (保持不变)
+│   ├── robomimic/{pretrain,finetune,eval}/
+│   ├── gym/{pretrain,finetune,eval}/
+│   └── kitchen/...
+│
+├── agent/                      # 📦 RL 训练 agent (保持在根,import 路径不变)
+│   ├── pretrain/
+│   ├── finetune/
+│   │   └── reinflow/           # PPO / GRPO 微调 agent
+│   └── eval/visualize/
+├── model/                      # 神经网络架构
+│   └── flow/ft_ppo/            # PPO/GRPO + Score-SDE + GammaNet 各变体
+├── env/                        # 环境封装与注册
+├── data_process/               # 数据集预处理逻辑
+├── visualize/                  # 实验数据 / 出图代码
+├── util/                       # 工具类 (clear_pycache, dirs, ...)
+│
+├── external_libs/              # 📚 第三方依赖源码
+│   ├── mjrl/                   # 原 mjrl-master/
+│   └── d4rl/                   # 原 d4rl/
+│
+├── data/                       # 🗂️ 离线数据集 (gitignored, 仅留 .gitkeep)
+├── logs/                       # 📊 运行日志 / checkpoint (gitignored, REINFLOW_LOG_DIR 默认指向)
+│
+├── docs/                       # 文档
+├── installation/               # 安装指南
+├── pyproject.toml
+└── README.md
+```
+
+### 必需的环境变量
+
+```bash
+export REINFLOW_DIR='D:\GitLoadWareHouse\ScoReFlow'        # 项目根 (Windows 路径分隔)
+export REINFLOW_DATA_DIR='D:\GitLoadWareHouse\ScoReFlow\data'
+export REINFLOW_LOG_DIR='D:\GitLoadWareHouse\ScoReFlow\logs'
+```
+
+### 脚本调用约定
+
+所有 `scripts/` 下的 `.sh` 都假设 **当前工作目录是项目根**,并以相对路径调用 `python run.py --config-dir=cfg/...`。**正确用法:**
+
+```bash
+cd D:/GitLoadWareHouse/ScoReFlow
+bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
+bash scripts/train/gym/train_gym_finetune-with-score.sh
+bash scripts/eval/kitchen/eval_kitchen_finetune.sh
 ```
 
 ---
@@ -287,7 +325,7 @@ We use [Hydra](https://hydra.cc/) for configuration management.
 ### Example Configuration Override
 
 ```bash
-python script/run.py \
+python run.py \
     --config-dir=cfg/robomimic/finetune/transport \
     --config-name=ft_ppo_shortcut_mlp_img_with_score_gammanet \
     gamma_score=1.0 \

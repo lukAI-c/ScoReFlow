@@ -11,7 +11,7 @@ PPO Flow Agent with Image Input and Distributional Critic (C51)
     - TrainPPOFlowAgentDistribute: 分布式 Critic 支持
 
 运行示例:
-    python script/run.py --config-dir=cfg/robomimic/finetune/square \
+    python run.py --config-dir=cfg/robomimic/finetune/square \
         --config-name=ft_ppo_reflow_mlp_score_distribute
 """
 

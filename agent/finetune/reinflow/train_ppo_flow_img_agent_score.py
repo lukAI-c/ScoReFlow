@@ -7,7 +7,7 @@
 """
 DPPO fine-tuning.
 run this line to finetune hopper-v2: 
-python script/run.py --config-dir=cfg/gym/finetune/hopper-v2 --config-name=ft_ppo_reflow_mlp device=cuda:7
+python run.py --config-dir=cfg/gym/finetune/hopper-v2 --config-name=ft_ppo_reflow_mlp device=cuda:7
 """
 from tqdm import tqdm as tqdm
 import torch

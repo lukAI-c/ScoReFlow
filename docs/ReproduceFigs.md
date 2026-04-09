@@ -1,7 +1,12 @@
 
-## Recreating All the Plots in Our Paper
+## 论文图复现 (ScoReFlow)
 
-- **Preparation:** Grab all files from the `visualize` branch in the ReinFlow repo and unzip to `<REINFLOW_DIR>/visualize/`.
+> 以下命令均假设你已经从仓库的 `visualize` 分支拉取了所有 wandb 导出的 CSV 数据,
+> 并解压到 `${REINFLOW_DIR}/visualize/`。所有 visualize 脚本继承自 ReinFlow,
+> 实际位于 [`agent/eval/visualize/`](../agent/eval/visualize/),且全部以**项目根目录**为工作目录运行。
+>
+> 如果某张图引用的 CSV 数据不在你的 `visualize/Final_experiments/data/` 下,
+> 请先运行对应的微调实验,或从作者主页下载已 export 的 CSV。
 
 ### Figure 1: Wall Time Efficiency in OpenAI Gym
 ```bash

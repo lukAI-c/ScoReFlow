@@ -10,7 +10,7 @@ export PYOPENGL_PLATFORM=osmesa
 
 # 3. 运行命令
 # 注意：必须添加 sim_device=cpu (或者 null)，对应文档建议
-python script/run.py \
+python run.py \
   --config-dir=cfg/gym/eval/walker2d-medium-v2 \
   --config-name=eval_reflow_mlp \
   base_policy_path=./log/gym/pretrain/walker2d-medium-v2_pre_reflow_mlp_ta4_td20_seed42/2025-12-06_03-05-56_42/checkpoint/last.pt \
