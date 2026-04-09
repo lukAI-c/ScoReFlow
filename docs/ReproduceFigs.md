@@ -1,12 +1,12 @@
 
-## 论文图复现 (ScoReFlow)
+## Reproducing Figures from the Paper
 
-> 以下命令均假设你已经从仓库的 `visualize` 分支拉取了所有 wandb 导出的 CSV 数据,
-> 并解压到 `${REINFLOW_DIR}/visualize/`。所有 visualize 脚本继承自 ReinFlow,
-> 实际位于 [`agent/eval/visualize/`](../agent/eval/visualize/),且全部以**项目根目录**为工作目录运行。
+> The following commands assume you have already pulled all wandb-exported CSV data from the repo's `visualize` branch
+> and extracted to `${REINFLOW_DIR}/visualize/`. All visualize scripts are located in [`agent/eval/visualize/`](../agent/eval/visualize/)
+> and must be run from **the project root directory**.
 >
-> 如果某张图引用的 CSV 数据不在你的 `visualize/Final_experiments/data/` 下,
-> 请先运行对应的微调实验,或从作者主页下载已 export 的 CSV。
+> If CSV data for a figure is not in your `visualize/Final_experiments/data/`, either run the corresponding fine-tuning experiment
+> or download pre-exported CSVs from the authors' repository.
 
 ### Figure 1: Wall Time Efficiency in OpenAI Gym
 ```bash

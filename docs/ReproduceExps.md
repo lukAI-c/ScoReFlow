@@ -1,51 +1,51 @@
-# ScoReFlow 实验复现指南
+# ScoReFlow Experiment Reproduction Guide
 
-本指南覆盖数据准备、checkpoint 下载、预训练 / 微调 / 评估的运行方式,以及若干常见诀窍。
+This guide covers dataset preparation, checkpoint downloads, pre-training / fine-tuning / evaluation, and practical tips.
 
 ---
 
-## 0. 准备工作
+## 0. Preparation
 
-### 0.1 工作目录
+### 0.1 Working Directory
 
-**所有命令必须从项目根目录执行**,否则相对路径(`cfg/...`、`run.py`、`scripts/...`)会全部失效。
+**All commands must be run from the project root directory**, otherwise relative paths (`cfg/...`, `run.py`, `scripts/...`) will fail.
 
 ```
 ScoReFlow/
-├── run.py                  # 统一 Python 入口
-├── download_url.py         # 下载链接表
-├── cfg/                    # Hydra 配置
-├── scripts/                # 所有 Bash 启动脚本
+├── run.py                  # Unified Python entry point
+├── download_url.py         # Download URL table
+├── cfg/                    # Hydra configurations
+├── scripts/                # All bash launch scripts
 │   ├── train/{robomimic,gym,kitchen}/
 │   ├── eval/{robomimic,gym,kitchen}/
 │   └── utils/
 ├── agent/  model/  env/  util/  data_process/
 ├── external_libs/{mjrl,d4rl}/
-├── data/  logs/            # 数据 / checkpoint(默认 gitignored)
+├── data/  logs/            # Offline datasets / checkpoints (gitignored by default)
 └── docs/
 ```
 
-### 0.2 环境变量
+### 0.2 Environment Variables
 
-项目启动时 `util/dirs.py` 会强制校验以下四个环境变量,**任何一个未设置或路径不匹配都会报错退出**。
+At startup, `util/dirs.py` strictly validates the following environment variables. **Failure to set any or path mismatch will cause an error.**
 
-| 变量 | 作用 |
+| Variable | Purpose |
 |---|---|
-| `REINFLOW_DIR` | 项目根目录,必须与代码实际位置完全一致 |
-| `REINFLOW_DATA_DIR` | 离线数据集根目录 |
-| `REINFLOW_LOG_DIR` | checkpoint / wandb 输出根目录;yaml 里的 `logdir:` 和 `base_policy_path:` 均以此为基础拼接 |
-| `REINFLOW_WANDB_ENTITY` | WandB 用户名或团队名,不用 wandb 时可跳过(跑命令时加 `wandb=null`) |
+| `REINFLOW_DIR` | Project root directory; must exactly match code location |
+| `REINFLOW_DATA_DIR` | Offline dataset root directory |
+| `REINFLOW_LOG_DIR` | Checkpoint / wandb output root; all yaml `logdir:` and `base_policy_path:` are resolved from this |
+| `REINFLOW_WANDB_ENTITY` | WandB username or team name (optional; can skip by using `wandb=null`) |
 
-#### 一键初始化(推荐)
+#### One-time initialization (recommended)
 
 ```bash
-cd <项目根目录>
+cd <project-root>
 source scripts/utils/set_path.sh
 ```
 
-脚本会交互式提示输入各路径,填写后自动写入 `~/.bashrc`,并开启 `HYDRA_FULL_ERROR=1` 等调试开关。**只需运行一次**,之后重开终端自动生效。
+The script will interactively prompt for each path, save to `~/.bashrc`, and enable debug switches (`HYDRA_FULL_ERROR=1`, etc.). **Run once**, then open a new terminal and it takes effect.
 
-示例填写:
+Example input:
 ```
 Enter the place where your reinflow script lies:
 → /your/path/to/ScoReFlow
@@ -60,94 +60,94 @@ Enter your WandB entity (press ENTER to skip):
 → your_wandb_username
 ```
 
-#### 手动设置
+#### Manual Setup
 
-如果不想用交互式脚本,直接在 `~/.bashrc` 里追加:
+If you prefer not to use the interactive script, directly append to `~/.bashrc`:
 
 ```bash
 export REINFLOW_DIR=/your/path/to/ScoReFlow
 export REINFLOW_DATA_DIR=/your/path/to/ScoReFlow/data
 export REINFLOW_LOG_DIR=/your/path/to/ScoReFlow/logs
-export REINFLOW_WANDB_ENTITY=your_wandb_username   # 可选
+export REINFLOW_WANDB_ENTITY=your_wandb_username   # Optional
 
-# 调试开关(可选但推荐)
+# Debug switches (optional but recommended)
 export D4RL_SUPPRESS_IMPORT_ERROR=1
 export HYDRA_FULL_ERROR=1
 ```
 
-然后 `source ~/.bashrc`。
+Then `source ~/.bashrc`.
 
-#### 关于 logs/ 目录
+#### About the logs/ Directory
 
-如果之前在其他项目目录下已有训练好的 checkpoint,可以用软链接避免重复占用空间:
+If you have pre-trained checkpoints from another project, use a symlink to avoid duplicating storage:
 
 ```bash
-# 将旧项目的 log 目录软链接到本项目 logs/
+# Symlink old project's log directory to this project's logs/
 ln -s /old/project/log /your/path/to/ScoReFlow/logs
 ```
 
-这样 `REINFLOW_LOG_DIR` 指向新路径,但实际数据仍在原位。
+This way `REINFLOW_LOG_DIR` points to the new path but data stays at the original location.
 
 ---
 
-## 1. 数据集准备
+## 1. Dataset Preparation
 
 ### 1.1 D4RL Locomotion (Hopper / Walker2d / Ant / Humanoid)
 
-**方式 A:自动下载并预处理(推荐)**
+**Method A: Automatic download and preprocessing (recommended)**
 
-直接跑预训练命令并加 `use_d4rl_dataset=True`:
+Run pre-training with `use_d4rl_dataset=True`:
 
 ```bash
 python run.py --config-dir=cfg/gym/pretrain/walker2d-medium-v2 \
               --config-name=pre_reflow_mlp use_d4rl_dataset=True
 ```
 
-**方式 B:手动从 Hugging Face 下载**
+**Method B: Manual download from Hugging Face**
 
 ```bash
 wget https://huggingface.co/datasets/imone/D4RL/resolve/main/hopper_medium-v2.hdf5
 wget https://huggingface.co/datasets/imone/D4RL/resolve/main/walker2d_medium-v2.hdf5
 wget https://huggingface.co/datasets/imone/D4RL/resolve/main/ant_medium_expert-v2.hdf5
 
-# 查看 hdf5 结构
+# Inspect hdf5 structure
 python data_process/read_hdf5.py --file_path=<HDF5_PATH>
 
-# 转 npz + 归一化
+# Convert to npz + normalize
 python data_process/hdf5_to_npz.py --data_path=<HDF5_PATH>
 
-# 检查 npz 内容
+# Inspect npz contents
 python data_process/read_npz.py --data_path=<DIR>/train.npz
 ```
 
 ### 1.2 Franka Kitchen
 
-复用 D4RL 的 kitchen 数据。运行预训练时自动下载,无需手动操作。
+Reuses D4RL's kitchen data. Downloads automatically when running pre-training; no manual action needed.
 
 ### 1.3 Robomimic (image-based)
 
-`cfg/robomimic/pretrain/<task>/pre_*.yaml` 已经写好 Google Drive 链接,首次运行预训练时 `run.py` 会通过 `gdown` 自动拉取数据集与归一化统计。
+`cfg/robomimic/pretrain/<task>/pre_*.yaml` already contains Google Drive links. When running pre-training for the first time, `run.py` automatically downloads via `gdown`.
 
 ---
 
-## 2. 下载预训练 Checkpoint
+## 2. Download Pre-trained Checkpoints
 
-跑微调脚本时如果 `base_policy_path` 指向的文件不存在,`run.py` 会从 `download_url.py` 表里找对应链接并自动下载。
+When running fine-tuning, if `base_policy_path` points to a missing file, `run.py` will look up the download URL and fetch it automatically.
 
-也可以手动:
+Or download manually:
 ```bash
 python download_checkpoints.py --path "pretrain/hopper-v2/ReFlow/2025-02-06_01-35-03_42/checkpoint/state_1500.pt"
 ```
 
 ---
 
-## 3. 预训练
+## 3. Pre-training
 
-### Robomimic ShortCut(图像)
+### Robomimic ShortCut (image)
 
 ```bash
 bash scripts/train/robomimic/train_robomimic_pretrain.sh
-# 等价于:
+# Equivalent to:
 python run.py --config-dir=cfg/robomimic/pretrain/transport \
               --config-name=pre_shortcut_mlp_img \
               device=cuda:0 wandb.offline_mode=true
@@ -157,7 +157,7 @@ python run.py --config-dir=cfg/robomimic/pretrain/transport \
 
 ```bash
 bash scripts/train/gym/train_gym_pretrain.sh
-# 等价于:
+# Equivalent to:
 python run.py --config-dir=cfg/gym/pretrain/hopper-medium-v2 \
               --config-name=pre_reflow_mlp \
               device=cuda:0 +wandb.offline_mode=true
@@ -169,20 +169,20 @@ python run.py --config-dir=cfg/gym/pretrain/hopper-medium-v2 \
 bash scripts/train/kitchen/train_kitchen_pretrain.sh
 ```
 
-> 如果你只想用我们提供的预训练 checkpoint 而不自己重新训,可以跳过本节,直接进入「微调」。
+> If you only want to use our pre-trained checkpoints without retraining, skip this section and go directly to fine-tuning.
 
 ---
 
-## 4. 微调
+## 4. Fine-tuning
 
-ScoReFlow 提供 4 类微调入口:
+ScoReFlow offers 4 fine-tuning categories:
 
-| 类型 | 说明 | 配置名约定 |
+| Type | Description | Config Name Convention |
 |---|---|---|
-| **PPO 基线** | drift-only,无 score | `ft_ppo_*_mlp[*_img]` |
-| **PPO + Score-SDE + AlphaNet (本工作)** | 联合优化 drift + diffusion | `ft_ppo_*_with_score_alphanet[*_obs]` |
-| **GRPO 基线** | critic-free,组相对优势 | `ft_grpo_*_mlp[*_img]` |
-| **GRPO + Score-SDE + AlphaNet (本工作)** | GRPO + AlphaNet 组合 | `ft_grpo_*_with_score_alphanet` |
+| **PPO Baseline** | Drift-only, no score | `ft_ppo_*_mlp[*_img]` |
+| **PPO + Score-SDE + AlphaNet (ours)** | Joint drift + diffusion optimization | `ft_ppo_*_with_score_alphanet[*_obs]` |
+| **GRPO Baseline** | Critic-free, group-relative advantage | `ft_grpo_*_mlp[*_img]` |
+| **GRPO + Score-SDE + AlphaNet (ours)** | GRPO + AlphaNet combination | `ft_grpo_*_with_score_alphanet` |
 
 ### 4.1 Robomimic (image)
 
@@ -194,7 +194,7 @@ bash scripts/train/robomimic/train_robomimic_finetune-with-score.sh
 TASK=square    SEED=42 KL_COEF=0.2 bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
 TASK=transport SEED=42 KL_COEF=0.2 bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
 
-# 直接调 run.py 也可以
+# Direct run.py invocation
 python run.py --config-dir=cfg/robomimic/finetune/square \
               --config-name=ft_ppo_reflow_mlp_img_with_score_alphanet_obs \
               base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/.../last.pt \
@@ -207,7 +207,7 @@ python run.py --config-dir=cfg/robomimic/finetune/square \
 
 ```bash
 bash scripts/train/gym/train_gym_finetune-with-score.sh
-# 或 GRPO:
+# Or GRPO:
 TASK=kitchen SEED=42 KL_COEF=0.04 bash scripts/train/gym/train_gym_finetune-grpo.sh
 ```
 
@@ -217,23 +217,23 @@ TASK=kitchen SEED=42 KL_COEF=0.04 bash scripts/train/gym/train_gym_finetune-grpo
 bash scripts/train/kitchen/train_kitchen_finetune-with-score.sh
 ```
 
-### 4.4 微调常见 override
+### 4.4 Common fine-tuning overrides
 
 ```bash
-# 切换 base policy
+# Switch base policy
 python run.py ... base_policy_path=NEW.pt
 
-# 切换 normalization(用了不同 expert 数据时务必同步换!)
+# Switch normalization (critical if using different expert data!)
 python run.py ... normalization_path=NEW_DIR/normalization.npz
 
-# 自定义 wandb run 名(参数扫描时建议)
+# Custom wandb run name (for parameter sweeps)
 python run.py ... name=my_run_seed42
 
-# 后台跑 + 日志重定向(过夜训练)
+# Background run with log redirection (overnight training)
 nohup python run.py ... > my.log 2>&1 &
 ```
 
-### 4.5 训练崩了如何 resume
+### 4.5 Resume after training crash
 
 ```bash
 python run.py --config-dir=cfg/gym/finetune/walker2d-v2 \
@@ -241,20 +241,20 @@ python run.py --config-dir=cfg/gym/finetune/walker2d-v2 \
               resume_path=CHECKPOINT_THAT_FAILED.pt
 ```
 
-> Resume 会基于 checkpoint 状态继续训 `train.n_train_itr` 轮。
-> 如果配置里没 `resume_path` 字段,直接在命令行追加即可。
-> 目前支持 resume 的来源:ScoReFlow / ReinFlow 的预训练或微调 checkpoint,
-> 以及 `agent/finetune/reinflow/train_ppo_diffusion_*.py` 输出的 DPPO checkpoint。
+> Resume will continue training for another `train.n_train_itr` rounds from the checkpoint state.
+> If `resume_path` is not in the config, add it on the command line.
+> Currently supports resuming from pre-training or fine-tuning checkpoints from ScoReFlow / ReinFlow,
+> and DPPO checkpoints from `agent/finetune/reinflow/train_ppo_diffusion_*.py`.
 
 ---
 
-## 5. 评估
+## 5. Evaluation
 
 ```bash
-# 跑 robomimic 微调后的策略
+# Evaluate robomimic fine-tuned policy
 bash scripts/eval/robomimic/eval_robomimic_finetune.sh
 
-# 等价于
+# Equivalent to
 python run.py --config-dir=cfg/robomimic/eval/can \
               --config-name=eval_reflow_mlp_img_with_score_alphanet \
               base_policy_path=${REINFLOW_LOG_DIR}/robomimic/finetune/.../best.pt \
@@ -265,51 +265,51 @@ python run.py --config-dir=cfg/robomimic/eval/can \
               env.save_video=true +record_video=true render_num=5
 ```
 
-输出包括:
-- 6 张图(episode reward / success rate / episode length / inference freq / duration / best reward,带 std 阴影)
-- `.png` 与对应的数据文件
-- 若 `env.save_video=true`,还会输出 `.mp4`
+Output includes:
+- 6 plots (episode reward / success rate / episode length / inference frequency / duration / best reward, with std shading)
+- `.png` and corresponding data files
+- `.mp4` videos if `env.save_video=true`
 
 **Tips:**
-- `load_ema=True` 评估预训练策略,`False` 评估微调后的策略
-- `denoising_step_list` 不在配置里时直接命令行追加即可
-- 评估时建议关闭机器上其他 GPU 进程,以获得准确的推理时延
+- `load_ema=True` for pre-trained policies, `False` for fine-tuned ones
+- Add `denoising_step_list` to command line if not in config
+- Close other GPU processes for accurate inference timing
 
-**视频录制:** 在评估脚本里设置 `self.record_video=True` 与 `self.record_env_index`,可指定要录制的环境编号、`self.frame_width`/`self.frame_height` 控制分辨率。
+**Video recording:** Set `self.record_video=True` in the evaluation script and specify `self.record_env_index` to choose which environment to record. Control resolution with `self.frame_width` / `self.frame_height`.
 
-**警告:** ScoReFlow 在微调时会裁剪中间动作,所以评估时务必保持 `clip_intermediate_actions=True`,否则 reward 会下降。
+**Warning:** ScoReFlow clips intermediate actions during fine-tuning, so keep `clip_intermediate_actions=True` during evaluation, otherwise reward will drop.
 
 ---
 
-## 6. 实用技巧
+## 6. Practical Tips
 
-### 6.1 wandb 离线 / 关闭
+### 6.1 Offline / Disable wandb
 
 ```bash
-# 离线模式,稍后批量同步
+# Offline mode, sync later
 python run.py ... wandb.offline_mode=True
 
-# 同步某天所有离线 run
+# Batch sync all offline runs from a date
 for dir in ./wandb_offline/wandb/offline-run-20260409*; do wandb sync "${dir}"; done
 
-# 完全关闭 wandb (训练数据仍会落到本地 .pkl)
+# Completely disable wandb (training data still saved to local .pkl)
 python run.py ... wandb=null
 
-# 之后想恢复:用 util/pkl2wandb.py 把 .pkl 推回 wandb
+# Later recover: use util/pkl2wandb.py to push .pkl back to wandb
 python util/pkl2wandb.py --pkl <PATH>
 ```
 
-### 6.2 显存不够
+### 6.2 Out of GPU memory
 
-- 减小 `env.n_envs`,同时增大 `train.n_steps` 保持总样本量(`n_envs × n_steps × act_steps`)不变
-- `train.n_steps` 应是 `env.max_episode_steps / act_steps` 的整数倍
+- Reduce `env.n_envs`, increase `train.n_steps` to keep total samples constant (`n_envs × n_steps × act_steps`)
+- `train.n_steps` should be a multiple of `env.max_episode_steps / act_steps`
 
-### 6.3 渲染加速
+### 6.3 Accelerate rendering
 
-- EGL 可用时:`sim_device=<gpu_id>` 加速渲染
-- 无 EGL:`sim_device=null` 走 osmesa CPU 渲染
+- With EGL: `sim_device=<gpu_id>` for fast rendering
+- Without EGL: `sim_device=null` for CPU osmesa (slower)
 
-### 6.4 Robomimic 图像任务的 GPU 隔离
+### 6.4 Robomimic image task GPU isolation
 
 ```bash
 export CUDA_VISIBLE_DEVICES=3,4
@@ -317,21 +317,21 @@ export EGL_DEVICE_ID=4
 export MUJOCO_EGL_DEVICE_ID=4
 ```
 
-### 6.5 微调流匹配策略的几条经验
+### 6.5 Flow matching fine-tuning tips
 
-- **让它有时候失败**:用足够长的 rollout 来混合成功与失败轨迹,过短的轨迹会让 critic 学到错误的判断。
-- **调 critic warmup**:根据初始策略的成功率调整 warmup 迭代数,必要时还可以改 critic 的初始化偏置(`model.critic.out_bias_init`)。
+- **Let it fail sometimes**: Use long rollouts to mix successes and failures; short trajectories trick the critic.
+- **Tune critic warmup**: Adjust warmup iterations or initialization based on initial policy success rate.
 
 ---
 
-## 7. ScoReFlow 关键超参速查
+## 7. ScoReFlow Quick Reference
 
-| 超参 | 适用 | 推荐值 | 含义 |
+| Hyperparameter | Applies to | Recommended | Meaning |
 |---|---|---|---|
-| `gamma_score` | PPO+Score / GRPO+Score | `1.0` | AlphaNet $\alpha_\psi$ 初始尺度 |
-| `denoising_steps` | 全部 | `2 (square) / 4 (transport,kitchen)` | 去噪步数 |
-| `train.kl_coef` | GRPO | `0.04 (state) / 0.2 (image)` | GRPO KL 惩罚系数 |
-| `train.ent_coef` | 全部 | `0.01 (image) / 0.03 (state)` | 熵正则 |
-| `model.clip_ploss_coef` | PPO | `0.001 (image) / 0.01 (state)` | PPO 裁剪 $\epsilon$ |
-| `env.n_envs` | 全部 | `50` | 并行环境数 |
-| `seed` | 全部 | `42 / 128 / 2026` | 随机种子(论文中至少跑 3 个) |
+| `gamma_score` | PPO+Score / GRPO+Score | `1.0` | AlphaNet $\alpha_\psi$ initial scale |
+| `denoising_steps` | All | `2 (square) / 4 (transport,kitchen)` | Denoising steps |
+| `train.kl_coef` | GRPO | `0.04 (state) / 0.2 (image)` | GRPO KL penalty coefficient |
+| `train.ent_coef` | All | `0.01 (image) / 0.03 (state)` | Entropy regularization |
+| `model.clip_ploss_coef` | PPO | `0.001 (image) / 0.01 (state)` | PPO clipping $\epsilon$ |
+| `env.n_envs` | All | `50` | Parallel environments |
+| `seed` | All | `42 / 128 / 2026` | Random seed (run 3+ for papers) |

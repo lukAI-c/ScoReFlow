@@ -140,24 +140,24 @@ pip install -e ".[robomimic]"  # Robomimic (Square, Can, Transport)
 
 For detailed installation instructions, see [installation/reinflow-setup.md](./installation/reinflow-setup.md).
 
-### 环境变量初始化
+### Environment Variables Setup
 
-安装完成后,运行一次路径初始化脚本:
+After installation, run the path initialization script once:
 
 ```bash
 source scripts/utils/set_path.sh
 ```
 
-脚本会交互式设置以下变量并写入 `~/.bashrc`:
+The script will interactively set the following variables and append them to `~/.bashrc`:
 
-| 变量 | 说明 |
+| Variable | Description |
 |---|---|
-| `REINFLOW_DIR` | 项目根目录(启动时强制校验,必须与代码实际位置一致) |
-| `REINFLOW_DATA_DIR` | 离线数据集根目录 |
-| `REINFLOW_LOG_DIR` | checkpoint / wandb 输出目录;所有 yaml 的 `logdir:` 和 `base_policy_path:` 均以此拼接 |
-| `REINFLOW_WANDB_ENTITY` | WandB 用户名(不用 wandb 可跳过,运行时加 `wandb=null`) |
+| `REINFLOW_DIR` | Project root directory (strictly validated at startup; must match code location) |
+| `REINFLOW_DATA_DIR` | Offline dataset root directory |
+| `REINFLOW_LOG_DIR` | Checkpoint / wandb output directory; all yaml `logdir:` and `base_policy_path:` are resolved from this |
+| `REINFLOW_WANDB_ENTITY` | WandB username (optional; can skip if using `wandb=null`) |
 
-> 详细说明见 [docs/ReproduceExps.md](docs/ReproduceExps.md#02-环境变量)。
+> For detailed instructions, see [docs/ReproduceExps.md](docs/ReproduceExps.md#02-environment-variables).
 
 ---
 
