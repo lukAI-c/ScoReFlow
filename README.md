@@ -195,7 +195,7 @@ MUJOCO_GL="egl" xvfb-run -a -s "-screen 0 1024x768x24" python run.py \
 ### Evaluation
 
 ```bash
-# 所有 .sh 必须从项目根目录调用 (它们内部使用相对路径 cfg/... 和 run.py)
+# All .sh scripts must be run from the project root (they use relative paths cfg/... and run.py internally)
 bash scripts/eval/robomimic/eval_robomimic_finetune.sh
 ```
 
@@ -205,46 +205,46 @@ bash scripts/eval/robomimic/eval_robomimic_finetune.sh
 
 ```
 ScoRe-Flow/
-├── run.py                      # Hydra 入口,自动下载数据/checkpoint
+├── run.py                      # Hydra entry point; auto-downloads data/checkpoints
 ├── scripts/
-│   ├── train/{robomimic,gym,kitchen}/   # 训练脚本
-│   ├── eval/{robomimic,gym,kitchen}/    # 评估脚本
-│   └── utils/                           # 环境工具、数据预处理
-├── cfg/                        # Hydra 配置 (yaml)
+│   ├── train/{robomimic,gym,kitchen}/   # Training scripts
+│   ├── eval/{robomimic,gym,kitchen}/    # Evaluation scripts
+│   └── utils/                           # Environment setup, data preprocessing
+├── cfg/                        # Hydra configurations (yaml)
 │   ├── robomimic/{pretrain,finetune,eval}/
 │   └── gym/{pretrain,finetune,eval}/
-├── agent/                      # RL agent (PPO / GRPO)
+├── agent/                      # RL agents (PPO / GRPO)
 │   ├── pretrain/
-│   ├── finetune/reinflow/      # 核心微调 agent
+│   ├── finetune/reinflow/      # Core fine-tuning agents
 │   └── eval/visualize/
-├── model/                      # 网络架构
-│   └── flow/ft_ppo/            # PPO/GRPO + Score-SDE + AlphaNet 各变体
-├── env/                        # 环境封装
-├── data_process/               # 数据集预处理
-├── visualize/                  # 出图代码
-├── util/                       # 工具类
-├── external_libs/{mjrl,d4rl}/  # 第三方源码
-├── data/                       # 离线数据集 (gitignored)
-├── logs/                       # checkpoint / wandb (gitignored)
-├── docs/                       # 文档
+├── model/                      # Network architectures
+│   └── flow/ft_ppo/            # PPO/GRPO + Score-SDE + AlphaNet variants
+├── env/                        # Environment wrappers
+├── data_process/               # Dataset preprocessing
+├── visualize/                  # Plotting code
+├── util/                       # Utilities
+├── external_libs/{mjrl,d4rl}/  # Third-party source code
+├── data/                       # Offline datasets (gitignored)
+├── logs/                       # Checkpoints / wandb outputs (gitignored)
+├── docs/                       # Documentation
 └── pyproject.toml
 ```
 
-### 脚本命名约定
+### Script Naming Convention
 
-配置和脚本名中的后缀标识不同方法:
+Suffixes in config and script names identify different methods:
 
-| 后缀 | 对应方法 | 说明 |
+| Suffix | Method | Description |
 |---|---|---|
-| `_score` | Score-based SDE | 固定 $\alpha$ 的 score drift 修正 |
-| `_with_score` | Score-based Drift ReinFlow | 仅用 score 修正 drift,无可学扩散 |
-| `_with_score_alphanet` | **ScoReFlow** | 可学 AlphaNet $\alpha_\psi(t)$ 联合控制 drift + diffusion |
+| `_score` | Score-based SDE | Fixed $\alpha$ score drift correction |
+| `_with_score` | Score-based Drift ReinFlow | Score-corrected drift only, no learnable diffusion |
+| `_with_score_alphanet` | **ScoReFlow** | Learnable AlphaNet $\alpha_\psi(t)$ jointly controls drift + diffusion |
 
-> Python 模型文件/类名中仍保留 `gammanet` 命名,配置文件和脚本统一使用 `alphanet`。
+> Python model files/class names still use `gammanet`; configs and scripts are unified to `alphanet`.
 
-### 脚本调用
+### Running Scripts
 
-所有 `scripts/` 下的 `.sh` 需从项目根目录运行:
+All `.sh` scripts under `scripts/` must be run from the project root:
 
 ```bash
 bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
