@@ -140,6 +140,25 @@ pip install -e ".[robomimic]"  # Robomimic (Square, Can, Transport)
 
 For detailed installation instructions, see [installation/reinflow-setup.md](./installation/reinflow-setup.md).
 
+### 环境变量初始化
+
+安装完成后,运行一次路径初始化脚本:
+
+```bash
+source scripts/utils/set_path.sh
+```
+
+脚本会交互式设置以下变量并写入 `~/.bashrc`:
+
+| 变量 | 说明 |
+|---|---|
+| `REINFLOW_DIR` | 项目根目录(启动时强制校验,必须与代码实际位置一致) |
+| `REINFLOW_DATA_DIR` | 离线数据集根目录 |
+| `REINFLOW_LOG_DIR` | checkpoint / wandb 输出目录;所有 yaml 的 `logdir:` 和 `base_policy_path:` 均以此拼接 |
+| `REINFLOW_WANDB_ENTITY` | WandB 用户名(不用 wandb 可跳过,运行时加 `wandb=null`) |
+
+> 详细说明见 [docs/ReproduceExps.md](docs/ReproduceExps.md#02-环境变量)。
+
 ---
 
 ## Quick Start

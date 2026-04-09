@@ -27,13 +27,66 @@ ScoReFlow/
 
 ### 0.2 环境变量
 
+项目启动时 `util/dirs.py` 会强制校验以下四个环境变量,**任何一个未设置或路径不匹配都会报错退出**。
+
+| 变量 | 作用 |
+|---|---|
+| `REINFLOW_DIR` | 项目根目录,必须与代码实际位置完全一致 |
+| `REINFLOW_DATA_DIR` | 离线数据集根目录 |
+| `REINFLOW_LOG_DIR` | checkpoint / wandb 输出根目录;yaml 里的 `logdir:` 和 `base_policy_path:` 均以此为基础拼接 |
+| `REINFLOW_WANDB_ENTITY` | WandB 用户名或团队名,不用 wandb 时可跳过(跑命令时加 `wandb=null`) |
+
+#### 一键初始化(推荐)
+
 ```bash
-export REINFLOW_DIR='D:\GitLoadWareHouse\ScoReFlow'              # 必填,严格匹配真实路径
-export REINFLOW_DATA_DIR='D:\GitLoadWareHouse\ScoReFlow\data'    # 离线数据集根
-export REINFLOW_LOG_DIR='D:\GitLoadWareHouse\ScoReFlow\logs'     # checkpoint / wandb 输出根
+cd <项目根目录>
+source scripts/utils/set_path.sh
 ```
 
-> Windows 必须用反斜杠形式,正斜杠会让 `util/dirs.py` 启动校验失败。
+脚本会交互式提示输入各路径,填写后自动写入 `~/.bashrc`,并开启 `HYDRA_FULL_ERROR=1` 等调试开关。**只需运行一次**,之后重开终端自动生效。
+
+示例填写:
+```
+Enter the place where your reinflow script lies:
+→ /your/path/to/ScoReFlow
+
+Enter the desired data directory:
+→ /your/path/to/ScoReFlow/data
+
+Enter the desired logging directory:
+→ /your/path/to/ScoReFlow/logs
+
+Enter your WandB entity (press ENTER to skip):
+→ your_wandb_username
+```
+
+#### 手动设置
+
+如果不想用交互式脚本,直接在 `~/.bashrc` 里追加:
+
+```bash
+export REINFLOW_DIR=/your/path/to/ScoReFlow
+export REINFLOW_DATA_DIR=/your/path/to/ScoReFlow/data
+export REINFLOW_LOG_DIR=/your/path/to/ScoReFlow/logs
+export REINFLOW_WANDB_ENTITY=your_wandb_username   # 可选
+
+# 调试开关(可选但推荐)
+export D4RL_SUPPRESS_IMPORT_ERROR=1
+export HYDRA_FULL_ERROR=1
+```
+
+然后 `source ~/.bashrc`。
+
+#### 关于 logs/ 目录
+
+如果之前在其他项目目录下已有训练好的 checkpoint,可以用软链接避免重复占用空间:
+
+```bash
+# 将旧项目的 log 目录软链接到本项目 logs/
+ln -s /old/project/log /your/path/to/ScoReFlow/logs
+```
+
+这样 `REINFLOW_LOG_DIR` 指向新路径,但实际数据仍在原位。
 
 ---
 
