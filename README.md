@@ -19,6 +19,8 @@
 - [Project Structure](#project-structure)
 - [Experiments](#experiments)
 - [Configuration](#configuration)
+- [Acknowledgement](#acknowledgement)
+- [Citation](#citation)
 - [License](#license)
 
 ---
@@ -342,6 +344,44 @@ python run.py \
 
 ---
 
+## Acknowledgement
+
+This project builds upon [ReinFlow](https://github.com/ReinFlow/ReinFlow), which is licensed under the MIT License. We thank the original authors for their excellent open-source work.
+
+Key extensions in this repository:
+- **Score-SDE formulation**: Integrates analytically derived score functions into the RL fine-tuning objective, enabling joint control of both drift and diffusion
+- **AlphaNet**: A lightweight learnable time-dependent schedule $\alpha_\psi(t)$ that modulates score guidance strength across denoising steps
+- **GRPO support**: Critic-free fine-tuning via group-relative policy optimization with explicit KL penalty
+
+---
+
+## Citation
+
+If you find this work useful, please consider citing:
+
+```bibtex
+@misc{scoref low2026,
+  title   = {ScoRe-Flow: Complete Distributional Control via Score-Based Reinforcement Learning for Flow Matching},
+  author  = {},
+  year    = {2026},
+  url     = {https://github.com/lukAI-c/ScoReFlow}
+}
+```
+
+If you use the ReinFlow codebase this work builds upon, please also cite:
+
+```bibtex
+@misc{zhang2025reinflow,
+  title   = {ReinFlow: Fine-tuning Flow Matching Policy with Online Reinforcement Learning},
+  author  = {Zhang, Tongzhou and others},
+  year    = {2025},
+  url     = {https://github.com/ReinFlow/ReinFlow}
+}
+```
+
+---
+
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+The original ReinFlow code is also MIT licensed; copyright notices for both are retained in `LICENSE`.
