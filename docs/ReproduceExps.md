@@ -1,297 +1,337 @@
-# Your Friendly Guide to Reproducing Our Experiments
+# ScoReFlow Experiment Reproduction Guide
 
-Welcome! This guide will walk you through setting up and running experiments. 
-
-It’s split into clear steps: getting datasets, downloading checkpoints, running experiments, and some handy tips. Let’s make this as smooth as possible. 
-
-## 📂 Before you begin...
-
-To avoid import errors and ensure smooth execution, run all commands from the root directory of the ReinFlow repository.
-
-Your directory should look like this:
-
-```bash
-ReinFlow/
-├── agent/
-├── cfg/
-├── script/
-├── util/
-└── ...
-```
-Please double-check that your working directory matches this structure.
-
-## 1. Getting and Preparing Datasets for Pre-training
-**Should I read this section?**
-* If you wish to reproduce our pre-training results, or train an offline RL agent such as FQL, please read this section and download the pre-training data first. 
-* If you want to add your own environment, train a model from scratch, and then fine-tune it, this section  is also*  helpful for your understanding of this repository. 
-* If you only want to fine-tune our pre-trained checkpoints with online RL methods, feel free to skip this section. 
-
-### OpenAI Gym: State-Based Locomotion Datasets
-
-For OpenAI Gym, you’ve got two dataset options: D4RL’s version (our top pick) and DPPO’s version (older and less recommended). Here’s how to handle them.
-
-#### D4RL’s Version (Recommended)
-
-- **Option 1: Grab Processed Data Automatically**
-  - Use the pre-training command with `use_d4rl_dataset=True` to download `train.npz` and `normalization.npz` files effortlessly.
-  - Example for `walker2d-medium-v2`:
-    ```bash
-    python script/run.py --config-dir=cfg/gym/pretrain/walker2d-medium-v2 --config-name=pre_reflow_mlp
-    ```
-  - Check Section 3.1 for more details.
-
-- **Option 2: Process Data Manually**
-  - This works only for `hopper`, `walker2d`, and `ant`.
-  - Steps:
-    1. Download raw `.hdf5` files from Hugging Face:
-       ```bash
-       wget https://huggingface.co/datasets/imone/D4RL/resolve/main/hopper_medium-v2.hdf5
-       wget https://huggingface.co/datasets/imone/D4RL/resolve/main/walker2d_medium-v2.hdf5 
-       wget https://huggingface.co/datasets/imone/D4RL/resolve/main/ant_medium_expert-v2.hdf5
-       ```
-    2. Peek inside the `.hdf5` files:
-       ```bash
-       # Check out the data structure of your .hdf5 file
-       python data_process/read_hdf5.py --file_path=<PATH_TO_YOUR_HDF5> 
-       ```
-    3. Convert to `.npz` and normalize the expert demos:
-       ```bash
-       # Transform .hdf5 to .npz and scale demos to [-1,1]
-       python data_process/hdf5_to_npz.py --data_path=<PATH_TO_YOUR_HDF5>  
-       # Outputs description.log and normalization.npz in the same folder
-       # Optional: tweak --max_episodes (default: all) and --val_split (default: 0.0)
-       ```
-    4. Inspect your new `.npz` files:
-       ```bash
-       # Explore the processed .npz or read description.log
-       python data_process/read_npz.py --data_path=normalization.npz
-       ```
-    5. Move the files to `/data/gym/<TASK_NAME>`.
-
-#### DPPO’s Version (Deprecated)
-
-- Downloads automatically with `use_d4rl_dataset=False`, but we suggest sticking to D4RL for consistency.
-- Example:
-  ```bash
-  python script/run.py --config-dir=cfg/gym/pretrain/walker2d-medium-v2 --config-name=pre_reflow_mlp device=cuda:0 sim_device=cuda:0
-  ```
-- **Heads Up:** 
-  - Use DPPO’s dataset only to match their exact results. 
-  - For broader compatibility with D4RL-based research, go with D4RL’s version. 
-  - If using both, store them separately and update `train_dataset_path` and `normalization_path` in your commands.
-
-### Franka Kitchen: State-Based Multitask Manipulation Datasets
-
-- Uses D4RL’s datasets (complete, mixed, or partial observations) via DPPO’s approach.
-- Run pre-training commands, and the data downloads and normalizes itself—easy! See Section 3.1 for more.
-
-### Robomimic: Pixel-Based Manipulation Datasets
-
-- Relies on DPPO’s simplified Robomimic pixel datasets.
-- Pre-training commands handle downloading and normalizing automatically. Check Section 3.1.
-- **Note:** DPPO’s data is simpler and smaller than official Robomimic data. Training on the official stuff takes bigger models and more time but boosts pre-trained success rates.
+This guide covers dataset preparation, checkpoint downloads, pre-training / fine-tuning / evaluation, and practical tips.
 
 ---
 
-## 2. Downloading Pre-trained Checkpoints
+## 0. Preparation
 
-Simply run the fine-tuning scripts and the checkpoints will be automatically downloaded. 
+### 0.1 Working Directory
 
+**All commands must be run from the project root directory**, otherwise relative paths (`cfg/...`, `run.py`, `scripts/...`) will fail.
 
-## 3. Running the Experiments
-Since we support too many experiments and algorithms, this document will not record all of the possible commands. We will only show some examples and the other settings follow our listed command patterns. 
-
-### 3.1 Pre-training
-
-Pre-training trains policies using offline datasets and these checkpoint will be used for fine-tuning. 
-You can skip this part if you want to use our pre-trained checkpoints, but you can also train your own following our guide. 
-Here’s how it works for some environments, under varying settings. Feel free to change the model class, environment and task names according to your need. 
-
-#### OpenAI Gym
-
-- **Pre-train a DDPM Policy in `walker2d`:**
-  ```bash
-  # Train a DDPM policy for walker2d with GPU support and periodic testing
-  python script/run.py --config-dir=cfg/gym/pretrain/walker2d-medium-v2 --config-name=pre_diffusion_mlp device=cuda:0 sim_device=cuda:0 test_in_mujoco=True
-  # `device`: GPU for computations; `sim_device`: GPU for rendering (set to null if no EGL support)
-  # `test_in_mujoco=True`: Tests policy every `test_freq` steps
-  ```
-
-- **Pre-train a 1-ReFlow Policy in `Humanoid-v3` Offline:**
-  ```bash
-  # Train a 1-ReFlow policy offline—great for spotty internet
-  python script/run.py --config-dir=cfg/gym/pretrain/humanoid-medium-v3 --config-name=pre_reflow_mlp wandb.offline_mode=True
-  # `wandb.offline_mode=True`: Keeps logging local if online sync isn’t an option
-  ```
-
-- **Pre-train a Shortcut Policy in `Robomimic square`:**
-  ```bash
-  # Train a Shortcut policy with denoising steps up to 20 (uses powers of 2: 1, 2, 4, 8, 16)
-  python script/run.py --config-dir=cfg/robomimic/pretrain/square --config-name=pre_shortcut_mlp denoising_steps=20
-  # `denoising_steps`: Max steps for distillation; uses powers of 2 below this
-  ```
-
-#### Franka Kitchen and Robomimic
-
-- Commands are similar to Gym’s, just swap the config paths:
-  - Franka Kitchen: `--config-dir=cfg/gym/pretrain/kitchen-mixed-v0`
-  - Robomimic: `--config-dir=cfg/robomimic/pretrain/transport`
-- Update `--config-name` to match the config file names in those directories.
-
-### 3.2 Fine-tuning
-
-Fine-tuning tweaks pre-trained policies with online RL. Check out these examples.
-
-- **DDPM Policy in Franka Kitchen with DPPO:**
-  ```bash
-  python script/run.py --config-dir=cfg/gym/finetune/kitchen-partial-v0 --config-name=ft_ppo_diffusion_mlp seed=3407
-  ```
-
-- **Visual-Input DDIM Policy in Robomimic with DPPO:**
-  ```bash
-  python script/run.py --config-dir=cfg/robomimic/finetune/square --config-name=ft_ppo_diffusion_mlp_img
-  ```
-
-- **1-ReFlow Policy in OpenAI Gym with ReinFlow:**
-  ```bash
-  python script/run.py --config-dir=cfg/gym/finetune/ant-v2 --config-name=ft_ppo_reflow_mlp_img min_std=0.08 max_std=0.16 train.ent_coef=0.03 
-  ```
-
-- **Visual-Input Shortcut Policy in Robomimic with ReinFlow:**
-  ```bash
-  python script/run.py --config-dir=cfg/gym/finetune/ant-v2 --config-name=ft_ppo_reflow_mlp_img denoising_steps=1 ft_denoising_steps=1 
-  ```
-
-#### Troubleshooting
-
-- **Training Crashed? Resume It:**
-  ```bash
-  # Pick up where you left off after a crash
-  ENV_NAME=walker2d-v2 ALG_NAME=difussion \
-  python script/run.py --config-dir=cfg/gym/finetune/${ENV_NAME} --config-name=ft_ppo_${ALG_NAME}_mlp \
-  resume_path=CHECKPOINT_THAT_FAILED.pt
-  ```
-  - This make you continue training for another `train.n_train_itr` rounds, restoring everything from the checkpoint. 
-  - If you meet the error that there is no `resume_path` in the config file, just append it. 
-  - Currently, we only support resuming from pre-trained or fine-tuned checkpoints obtained via ReinFlow, and the DPPO checkpoints trained with `agent/finetune/reinflow/train_ppo_diffusion_img_agent.py` or `agent/finetune/reinflow/train_ppo_diffusion_agent.py`. 
-
-- **Want to Change a Pre-trained Policy?**
-  Simply specify it in your prompt:
-  ```bash
-  python script/run.py --config-dir=cfg/robomimic/finetune/transport --config-name=ft_ppo_shortcut_mlp \
-  base_policy_path=NEW_PRETRAINED_POLICY.pt \
-  ```
-
-- **Want to Use a Policy Trained on Different Expert Data?**
-  Don't forget to update the normalization path to your new expert data. A mismatched normalization will make your curves look super wierd! 
-  ```bash
-  python script/run.py --config-dir=cfg/robomimic/finetune/transport --config-name=ft_ppo_shortcut_mlp \
-  device=cuda:0 sim_device=cuda:1 \
-  base_policy_path=NEW_PRETRAINED_POLICY.pt \
-  normalization_path=PATH_TO_YOUR_NEW_EXPERT_DATA_DIRECTORY/normalization.npz \
-  ```
-
-- **How to Specify a WandB Name Before Training Starts ? (When Doing Parameter Sweep)**
-  ```bash
-  # Name your run and log it in the background
-  nohup python script/run.py --config-dir=cfg/gym/finetune/kitchen-complete-v0 --config-name=ft_ppo_shortcut_mlp device=cuda:0 sim_device=cuda:0 denoising_steps=1 ft_denoising_steps=1 seed=3407 \
-  name=THE_NAME_I_LIKE_seed3407 \
-  > ./ft_kitchen_complete_v0_shortcut_denoise_step_1_seed3407.log 2>&1 &
-  ```
-
-- **My GPU is Not Fast Enough and I Want to Run Overnight, How to do it?**
-  The most stable method is to run in the background and output all logs to a certain file. 
-  ```bash
-  # Run in the background and save logs to a custom file
-  nohup python script/run.py --config-dir=cfg/gym/finetune/kitchen-complete-v0 --config-name=ft_ppo_shortcut_mlp > ./MY_CUSTOM_LLOG_FILE.log 2>&1 &
-  ```
-
-
-#### Quick Tips for Fine-tuning Flow Policies
-
-- **Let It Fail Sometimes:**
-  - Use enough rollout steps to mix successes and failures. Too-short trajectories can trick the critic into bad decisions.
-- **Tweak Critic Warmup:**
-  - Adjust warmup iterations or even initializatoin based on how well your initial policy performs.
-
-
-
-
-
-
-### 3.3 Evaluating
-
-To evaluate pre-trained policies across various denoising steps, run this command in your terminal: 
-```bash
-python script/run.py --config-dir=cfg/robomimic/eval/transport --config-name=eval_reflow_mlp_img base_policy_path=PATH_TO_THE_POLICY_TO_EVALUATE denoising_step_list=[1,2,4,5,8,16,32,64,128] load_ema=False
 ```
-- **What You Get:** Six plots showing episode reward, success rates, episode length, inference frequency, duration, and best reward, with shaded areas for standard deviation.
-- **Tips:**
-  - `load_ema=True` for pre-trained policies; `False` for fine-tuned ones.
-  - Can’t set `denoising_step_list`? Add it to your config file.
-  - Clear other processes on your machine for accurate timing.
-- **Output:** Saves a `.png` plot and data files for later use. Example: 
-<div align="center">
-  <img src="../sample_figs/denoise_step.png" alt="Evaluation Output" width="60%">
-</div>
+ScoReFlow/
+├── run.py                  # Unified Python entry point
+├── download_url.py         # Download URL table
+├── cfg/                    # Hydra configurations
+├── scripts/                # All bash launch scripts
+│   ├── train/{robomimic,gym,kitchen}/
+│   ├── eval/{robomimic,gym,kitchen}/
+│   └── utils/
+├── agent/  model/  env/  util/  data_process/
+├── external_libs/{mjrl,d4rl}/
+├── data/  logs/            # Offline datasets / checkpoints (gitignored by default)
+└── docs/
+```
 
-- **What to record videos?** For Gym, Robomimic, and Franka Kitchen, you can change the `self.record_video=True` in the corresponding evaluation script and set `self.record_env_index` to the environment id that you wish to record. You can also specify the height and width of your video by changing the values of `self.frame_width` and `self.frame_height`. Then after running the evaluation script, you will see a .mp4 file under your output directory along with your plot! Below, we provide an example video (converted to .gif), which records Fine-tuned Shortcut Flow in Robomimic-can environment, inferred at 1 denoising steps. 
+### 0.2 Environment Variables
 
-<div align="center">
-  <img src="../sample_figs/ShortCutFlow_can_step1_1080_1920.gif" controls title="Fine-tuned Shortcut Flow in Robomimic-can at 1 denoising step">
-</div>
+At startup, `util/dirs.py` strictly validates the following environment variables. **Failure to set any or path mismatch will cause an error.**
 
-<!-- <video width="1080" height="1920" controls>
-  <source src="sample_figs/ShortCutFlow_can_step1_1080_1920.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video> -->
+| Variable | Purpose |
+|---|---|
+| `REINFLOW_DIR` | Project root directory; must exactly match code location |
+| `REINFLOW_DATA_DIR` | Offline dataset root directory |
+| `REINFLOW_LOG_DIR` | Checkpoint / wandb output root; all yaml `logdir:` and `base_policy_path:` are resolved from this |
+| `REINFLOW_WANDB_ENTITY` | WandB username or team name (optional; can skip by using `wandb=null`) |
 
-- **Warning** If you trained a flow matching policy with ReinFlow, typically we will clip the denoised actions during fine-tuning. Therefore, we recommend you turn on `self.clip_intermediate_actions=True` in your evaluation script. Otherwise the reward may drop. 
+#### One-time initialization (recommended)
 
+```bash
+cd <project-root>
+source scripts/utils/set_path.sh
+```
 
-### 3.4 Sensitivity Analysis
-* Change the sampling distribution for 1-ReFlow policies. 
+The script will interactively prompt for each path, save to `~/.bashrc`, and enable debug switches (`HYDRA_FULL_ERROR=1`, etc.). **Run once**, then open a new terminal and it takes effect.
 
-Currently, we support using beta distribution or logit normal distribution. 
-Just change `model.sample_t_type=beta` or `model.sample_t_type=logitnormal` in your pre-training commands. 
+Example input:
+```
+Enter the place where your reinflow script lies:
+→ /your/path/to/ScoReFlow
 
-We provide the Google Drive link to the 1-ReFlow checkpoints trained in Square with [beta](https://drive.google.com/file/d/1d2oDejHLzkzSOuryvDKBZbJlVFBeo3ZQ/view?usp=drive_link) and [logitnormal](https://drive.google.com/file/d/1W-RH23OZMpVW5Ijo2ZmsYIlgVTsXuSfD/view?usp=drive_link)distributions. 
+Enter the desired data directory:
+→ /your/path/to/ScoReFlow/data
 
+Enter the desired logging directory:
+→ /your/path/to/ScoReFlow/logs
 
-## 4. Making the Most of This Repo
+Enter your WandB entity (press ENTER to skip):
+→ your_wandb_username
+```
 
-### WandB Logging
+#### Manual Setup
 
-- **No Internet? No Problem:**
-  - Use `wandb.offline_mode=True` and sync later with `wandb sync <your_wandb_offline_file>`.
-  - You can also sync all the offline data in a batch, for example, to sync all the offline wandb runs in 2025/05/10, run this in your terminal: 
-    `for dir in ./wandb_offline/wandb/offline-run-20250510*; do wandb sync "${dir}"; done`
-- **Skip WandB Logging to save memory:**
-  - Set `wandb=null` will stop creating a WandB logging. 
-- **I Turned wandb=null But Later I Wanted To Recover These Data:**
-  - No worries. Even if your `wandb=null`, we still automatically save all training record for all runs dto a `.pkl` file. You can always recover your WandB run later with `util/pkl2wandb.py`.
+If you prefer not to use the interactive script, directly append to `~/.bashrc`:
 
-### Managing Memory
+```bash
+export REINFLOW_DIR=/your/path/to/ScoReFlow
+export REINFLOW_DATA_DIR=/your/path/to/ScoReFlow/data
+export REINFLOW_LOG_DIR=/your/path/to/ScoReFlow/logs
+export REINFLOW_WANDB_ENTITY=your_wandb_username   # Optional
 
-- **My cuda is out of memory:**
-  - Reduce `env.n_envs` and bump up `train.n_steps` to keep total steps consistent (`n_envs x n_steps x act_steps`).
-  - Make `train.n_steps` a multiple of `env.max_episode_steps / act_steps`.
-  - Furniture-Bench uses IsaacGym on one GPU.
+# Debug switches (optional but recommended)
+export D4RL_SUPPRESS_IMPORT_ERROR=1
+export HYDRA_FULL_ERROR=1
+```
 
-### Switching Policies or Resuming
+Then `source ~/.bashrc`.
 
-- **Custom Pre-trained Policy:**
-  - Set `base_policy_path=<path>` in your command.
-- **Resume Training:**
-  - Add `resume_path=<checkpoint>` to your command (ensure `resume_path: null` is in your config).
+#### About the logs/ Directory
 
-### Rendering with MuJoCo
+If you have pre-trained checkpoints from another project, use a symlink to avoid duplicating storage:
 
-- **I want to render faster on GPUs**
-  - Set `sim_device=<gpu_id>` for fast rendering.
-  - No EGL? Use `sim_device=null` for slower osmesa rendering.
+```bash
+# Symlink old project's log directory to this project's logs/
+ln -s /old/project/log /your/path/to/ScoReFlow/logs
+```
 
-### Visualizing Results for Other benchmarks in DPPO:
-- **Furniture-Bench:** Set `env.specific.headless=False` and `env.n_envs=1`.
-- **D3IL:** Use `+env.render=True`, `env.n_envs=1`, `train.render.num=1`, and `script/test_d3il_render.py`.
+This way `REINFLOW_LOG_DIR` points to the new path but data stays at the original location.
 
+---
+
+## 1. Dataset Preparation
+
+### 1.1 D4RL Locomotion (Hopper / Walker2d / Ant / Humanoid)
+
+**Method A: Automatic download and preprocessing (recommended)**
+
+Run pre-training with `use_d4rl_dataset=True`:
+
+```bash
+python run.py --config-dir=cfg/gym/pretrain/walker2d-medium-v2 \
+              --config-name=pre_reflow_mlp use_d4rl_dataset=True
+```
+
+**Method B: Manual download from Hugging Face**
+
+```bash
+wget https://huggingface.co/datasets/imone/D4RL/resolve/main/hopper_medium-v2.hdf5
+wget https://huggingface.co/datasets/imone/D4RL/resolve/main/walker2d_medium-v2.hdf5
+wget https://huggingface.co/datasets/imone/D4RL/resolve/main/ant_medium_expert-v2.hdf5
+
+# Inspect hdf5 structure
+python data_process/read_hdf5.py --file_path=<HDF5_PATH>
+
+# Convert to npz + normalize
+python data_process/hdf5_to_npz.py --data_path=<HDF5_PATH>
+
+# Inspect npz contents
+python data_process/read_npz.py --data_path=<DIR>/train.npz
+```
+
+### 1.2 Franka Kitchen
+
+Reuses D4RL's kitchen data. Downloads automatically when running pre-training; no manual action needed.
+
+### 1.3 Robomimic (image-based)
+
+`cfg/robomimic/pretrain/<task>/pre_*.yaml` already contains Google Drive links. When running pre-training for the first time, `run.py` automatically downloads via `gdown`.
+
+---
+
+## 2. Download Pre-trained Checkpoints
+
+When running fine-tuning, if `base_policy_path` points to a missing file, `run.py` will look up the download URL and fetch it automatically.
+
+Or download manually:
+```bash
+python download_checkpoints.py --path "pretrain/hopper-v2/ReFlow/2025-02-06_01-35-03_42/checkpoint/state_1500.pt"
+```
+
+---
+
+## 3. Pre-training
+
+### Robomimic ShortCut (image)
+
+```bash
+bash scripts/train/robomimic/train_robomimic_pretrain.sh
+# Equivalent to:
+python run.py --config-dir=cfg/robomimic/pretrain/transport \
+              --config-name=pre_shortcut_mlp_img \
+              device=cuda:0 wandb.offline_mode=true
+```
+
+### Gym 1-ReFlow
+
+```bash
+bash scripts/train/gym/train_gym_pretrain.sh
+# Equivalent to:
+python run.py --config-dir=cfg/gym/pretrain/hopper-medium-v2 \
+              --config-name=pre_reflow_mlp \
+              device=cuda:0 +wandb.offline_mode=true
+```
+
+### Kitchen ShortCut
+
+```bash
+bash scripts/train/kitchen/train_kitchen_pretrain.sh
+```
+
+> If you only want to use our pre-trained checkpoints without retraining, skip this section and go directly to fine-tuning.
+
+---
+
+## 4. Fine-tuning
+
+ScoReFlow offers 4 fine-tuning categories:
+
+| Type | Description | Config Name Convention |
+|---|---|---|
+| **PPO Baseline** | Drift-only, no score | `ft_ppo_*_mlp[*_img]` |
+| **PPO + Score-SDE + AlphaNet (ours)** | Joint drift + diffusion optimization | `ft_ppo_*_with_score_alphanet[*_obs]` |
+| **GRPO Baseline** | Critic-free, group-relative advantage | `ft_grpo_*_mlp[*_img]` |
+| **GRPO + Score-SDE + AlphaNet (ours)** | GRPO + AlphaNet combination | `ft_grpo_*_with_score_alphanet` |
+
+### 4.1 Robomimic (image)
+
+```bash
+# PPO + ScoReFlow AlphaNet
+bash scripts/train/robomimic/train_robomimic_finetune-with-score.sh
+
+# GRPO + ScoReFlow AlphaNet (critic-free)
+TASK=square    SEED=42 KL_COEF=0.2 bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
+TASK=transport SEED=42 KL_COEF=0.2 bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
+
+# Direct run.py invocation
+python run.py --config-dir=cfg/robomimic/finetune/square \
+              --config-name=ft_ppo_reflow_mlp_img_with_score_alphanet_obs \
+              base_policy_path=${REINFLOW_LOG_DIR}/robomimic/pretrain/square/.../last.pt \
+              device=cuda:0 sim_device=cuda:1 \
+              wandb.offline_mode=true \
+              env.n_envs=50 denoising_steps=2 gamma_score=1 seed=42
+```
+
+### 4.2 Gym Locomotion (state)
+
+```bash
+bash scripts/train/gym/train_gym_finetune-with-score.sh
+# Or GRPO:
+TASK=kitchen SEED=42 KL_COEF=0.04 bash scripts/train/gym/train_gym_finetune-grpo.sh
+```
+
+### 4.3 Kitchen (state)
+
+```bash
+bash scripts/train/kitchen/train_kitchen_finetune-with-score.sh
+```
+
+### 4.4 Common fine-tuning overrides
+
+```bash
+# Switch base policy
+python run.py ... base_policy_path=NEW.pt
+
+# Switch normalization (critical if using different expert data!)
+python run.py ... normalization_path=NEW_DIR/normalization.npz
+
+# Custom wandb run name (for parameter sweeps)
+python run.py ... name=my_run_seed42
+
+# Background run with log redirection (overnight training)
+nohup python run.py ... > my.log 2>&1 &
+```
+
+### 4.5 Resume after training crash
+
+```bash
+python run.py --config-dir=cfg/gym/finetune/walker2d-v2 \
+              --config-name=ft_ppo_reflow_mlp \
+              resume_path=CHECKPOINT_THAT_FAILED.pt
+```
+
+> Resume will continue training for another `train.n_train_itr` rounds from the checkpoint state.
+> If `resume_path` is not in the config, add it on the command line.
+> Currently supports resuming from pre-training or fine-tuning checkpoints from ScoReFlow / ReinFlow,
+> and DPPO checkpoints from `agent/finetune/reinflow/train_ppo_diffusion_*.py`.
+
+---
+
+## 5. Evaluation
+
+```bash
+# Evaluate robomimic fine-tuned policy
+bash scripts/eval/robomimic/eval_robomimic_finetune.sh
+
+# Equivalent to
+python run.py --config-dir=cfg/robomimic/eval/can \
+              --config-name=eval_reflow_mlp_img_with_score_alphanet \
+              base_policy_path=${REINFLOW_LOG_DIR}/robomimic/finetune/.../best.pt \
+              device=cuda:0 \
+              denoising_step_list=[1,2,4,8] \
+              load_ema=False \
+              env.n_envs=50 \
+              env.save_video=true +record_video=true render_num=5
+```
+
+Output includes:
+- 6 plots (episode reward / success rate / episode length / inference frequency / duration / best reward, with std shading)
+- `.png` and corresponding data files
+- `.mp4` videos if `env.save_video=true`
+
+**Tips:**
+- `load_ema=True` for pre-trained policies, `False` for fine-tuned ones
+- Add `denoising_step_list` to command line if not in config
+- Close other GPU processes for accurate inference timing
+
+**Video recording:** Set `self.record_video=True` in the evaluation script and specify `self.record_env_index` to choose which environment to record. Control resolution with `self.frame_width` / `self.frame_height`.
+
+**Warning:** ScoReFlow clips intermediate actions during fine-tuning, so keep `clip_intermediate_actions=True` during evaluation, otherwise reward will drop.
+
+---
+
+## 6. Practical Tips
+
+### 6.1 Offline / Disable wandb
+
+```bash
+# Offline mode, sync later
+python run.py ... wandb.offline_mode=True
+
+# Batch sync all offline runs from a date
+for dir in ./wandb_offline/wandb/offline-run-20260409*; do wandb sync "${dir}"; done
+
+# Completely disable wandb (training data still saved to local .pkl)
+python run.py ... wandb=null
+
+# Later recover: use util/pkl2wandb.py to push .pkl back to wandb
+python util/pkl2wandb.py --pkl <PATH>
+```
+
+### 6.2 Out of GPU memory
+
+- Reduce `env.n_envs`, increase `train.n_steps` to keep total samples constant (`n_envs × n_steps × act_steps`)
+- `train.n_steps` should be a multiple of `env.max_episode_steps / act_steps`
+
+### 6.3 Accelerate rendering
+
+- With EGL: `sim_device=<gpu_id>` for fast rendering
+- Without EGL: `sim_device=null` for CPU osmesa (slower)
+
+### 6.4 Robomimic image task GPU isolation
+
+```bash
+export CUDA_VISIBLE_DEVICES=3,4
+export EGL_DEVICE_ID=4
+export MUJOCO_EGL_DEVICE_ID=4
+```
+
+### 6.5 Flow matching fine-tuning tips
+
+- **Let it fail sometimes**: Use long rollouts to mix successes and failures; short trajectories trick the critic.
+- **Tune critic warmup**: Adjust warmup iterations or initialization based on initial policy success rate.
+
+---
+
+## 7. ScoReFlow Quick Reference
+
+| Hyperparameter | Applies to | Recommended | Meaning |
+|---|---|---|---|
+| `gamma_score` | PPO+Score / GRPO+Score | `1.0` | AlphaNet $\alpha_\psi$ initial scale |
+| `denoising_steps` | All | `2 (square) / 4 (transport,kitchen)` | Denoising steps |
+| `train.kl_coef` | GRPO | `0.04 (state) / 0.2 (image)` | GRPO KL penalty coefficient |
+| `train.ent_coef` | All | `0.01 (image) / 0.03 (state)` | Entropy regularization |
+| `model.clip_ploss_coef` | PPO | `0.001 (image) / 0.01 (state)` | PPO clipping $\epsilon$ |
+| `env.n_envs` | All | `50` | Parallel environments |
+| `seed` | All | `42 / 128 / 2026` | Random seed (run 3+ for papers) |

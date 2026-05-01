@@ -1,104 +1,179 @@
-## Implementation Details
+# Implementation Details
+
+This document details key hyperparameters and code entry points for various fine-tuning methods in ScoReFlow.
+All RL fine-tuning agents inherit from [`agent/finetune/train_agent.py`](../agent/finetune/train_agent.py),
+with models concentrated in [`model/flow/ft_ppo/`](../model/flow/ft_ppo/).
 
 ---
 
-### ReinFlow Implementation Details
+## 1. ScoReFlow (Score-SDE + AlphaNet) — Core Method
 
-#### Key Hyperparameters
+Jointly optimizes drift (velocity field) and diffusion (noise) during RL fine-tuning, achieving complete distributional control via analytically-derived score functions + a lightweight learnable time-dependent schedule **AlphaNet** $\alpha_\psi(t)$.
 
-- `min_std` and `max_std`: Minimum and maximum standard deviation of the noise injected at each denoising step.
-- `denoising_steps`: Number of denoising steps.
-- `ft_denoising_steps`: Number of denoising steps to be fine-tuned, counting backward from the last step. Defaults to the value of `denoising_steps`.
+$$
+dx_t = \big[v_\theta(x_t,t) + \alpha_\psi(t)\cdot s(x_t,t)\big]\,dt + \sqrt{2\,\alpha_\psi(t)}\,dW_t
+$$
 
-#### Additional Hyperparameters
+where $s(x_t,t)=\dfrac{t\cdot v_\theta-x_t}{1-t}$ is the analytical score.
 
-- `train.clip_intermediate_actions`: Whether to clip intermediate actions during inference. Enable during fine-tuning and evaluation.
-- `model.denoised_clip_value`: Maximum absolute value for denoised actions. Default is 1.
-- `model.randn_clip_value`: Each sampled denoising action should fall within this many standard deviations from the mean. This prevents extremely large actions. Default is 3.
-- `model.clip_ploss_coef`: PPO clipping parameter $\epsilon$. For robotics with complex policies, smaller $\epsilon$ values are preferred. Following DPPO, we use $\epsilon = 0.01$ for state-input tasks and $\epsilon = 0.001$ for visual manipulation. This parameter strongly affects policy gradient stability.
-- `model.logprob_min` and `model.logprob_max`: Clipping ranges for log probabilities. If your hyperparameters are set correctly, log probabilities should remain within this range. If the policy collapses, log probabilities may become extremely low (negative). In such cases, consider reducing the noise level.
-- `model.noise_scheduler_type`: Type of noise scheduler. For state-input locomotion tasks, it is beneficial to start with higher noise std bounds and then decrease them for better convergence (`learn_decay`). Use `learn` to keep noise bounds constant and let the policy fit the noise automatically. Use `constant` for constant noise.
-- `model.use_time_independent_noise`: Set to `False` if noise depends on observations and time; otherwise, set to `True`. This also affects the network architecture.
-- `model.noise_hidden_dims`: List of hidden dimensions for the noise injection network.
-- `model.explore_net_activation_type`: Activation function for the noise network. Eight nonlinearities are supported, as defined in [model/common/mlp.py](../model/common/mlp.py).
-- `model.learn_explore_time_embedding`: Whether to train a time encoder for the noise network from scratch. Default is `False` (sharing the pre-trained policy's time encoder is sufficient).
-- `model.time_dim_explore`: Dimension of a separate time encoder, if trained. Default is 0 (no separate encoder).
-- `model.critic.out_bias_init`: If your critic is poorly initialized (e.g., outputs negative values despite a 30% policy success rate), set this to a positive float to add an initial bias to the final linear layer of your MLP or ViT. We set this to 4.0 only for the transport-image task.
+### Key Code
 
-- `train.use_bc_loss`, `train.bc_loss_type`, `train.bc_loss_coeff`: Whether to use behavior cloning (BC) loss as regularization, the type of BC loss (`None` or `'W2'`), and its intensity (e.g., 1.0). BC regularization is generally unnecessary except for the hopper task.
-- `train.ent_coef`: Entropy coefficient $\alpha_{\mathbf{h}}$. Use $\alpha_{\mathbf{h}} = 0.03$ for state-input tasks and 0 for visual manipulation to ensure stability. Larger $\alpha_{\mathbf{h}}$ increases noise std from `min_std` to `max_std`, while zero causes noise to decrease from `max_std` to `min_std`.
+| Component | Path |
+|---|---|
+| 1-ReFlow + Score-SDE + AlphaNet | [`ppoflow_with_score_gammanet.py`](../model/flow/ft_ppo/ppoflow_with_score_gammanet.py) |
+| ShortCut + Score-SDE + AlphaNet | [`pposhortcut_with_score_gammanet.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet.py) |
+| Generic score computation | [`score_utils.py`](../model/flow/score_utils.py) |
+| Train agent (state) | [`train_ppo_flow_agent_score.py`](../agent/finetune/reinflow/train_ppo_flow_agent_score.py) |
+| Train agent (image) | [`train_ppo_flow_img_agent_score.py`](../agent/finetune/reinflow/train_ppo_flow_img_agent_score.py) |
+| ShortCut AlphaNet agent | [`train_ppo_shortcut_gammanet_agent.py`](../agent/finetune/reinflow/train_ppo_shortcut_gammanet_agent.py) |
+
+> Note: Python filenames/class names still use `gammanet`; config files (yaml / sh) unified to `alphanet`.
+
+### ScoReFlow-Specific Hyperparameters
+
+- `gamma_score`: Overall scale of score guidance strength $\alpha_\psi$. Default `1.0`, tunable in `[0.1, 2.0]`.
+- `score_scheduler_type`: AlphaNet schedule type (default `learn` in code).
+- `model.gamma_net.hidden_dims`: AlphaNet hidden dimensions, default `[32, 32]`.
+- `model.gamma_net.activation`: Activation function, default `silu` with final `softplus` ensuring $\alpha\geq 0$.
+- Boundary handling: Hard time mask `(1-t)` prevents score singularity at $t=1$.
+
+### Relationship to Existing Methods
+
+| Method | Has score | $\alpha$ learnable | Config example |
+|---|---|---|---|
+| ReinFlow / DPPO | No (drift-only) | — | `ft_ppo_reflow_mlp.yaml` |
+| Fixed Score-SDE | Yes | No (constant) | `ft_ppo_*_with_score_alphanet_const.yaml` |
+| ScoReFlow | Yes | Yes (AlphaNet) | `ft_ppo_*_with_score_alphanet.yaml` |
+
+### Common Ablation Entry Points
+
+- **Freeze $v_\theta$, learn AlphaNet only**: [`pposhortcut_with_score_gammanet_frozen_v.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet_frozen_v.py)
+- **AlphaNet conditioned on observations**: [`ppoflow_with_score_gammanet_obs.py`](../model/flow/ft_ppo/ppoflow_with_score_gammanet_obs.py)
+- **Decoupled dual-loss AlphaNet**: [`pposhortcut_with_score_gammanet_dloss.py`](../model/flow/ft_ppo/pposhortcut_with_score_gammanet_dloss.py)
 
 ---
 
-### DPPO Implementation Details
+## 2. GRPO (Group-Relative Policy Optimization) — Critic-Free Fine-tuning
 
-#### Key Hyperparameters
+Critic-free alternative that removes the critic network entirely, using episode-level group-relative advantage:
+$$
+A_i = \dfrac{R_i - \mathrm{mean}(R)}{\mathrm{std}(R)}
+$$
+with explicit KL penalty replacing value loss.
 
-- `denoising_steps`: Number of denoising steps (should be the same for pre-training and fine-tuning, regardless of the fine-tuning scheme).
-- `ft_denoising_steps`: Number of fine-tuned denoising steps.
-- `horizon_steps`: Predicted action chunk size (should match `act_steps` for MLP; can differ for UNet, e.g., `horizon_steps=16`, `act_steps=8`).
+### Key Code
+
+| Component | Path |
+|---|---|
+| GRPO replay buffer | [`buffer_grpo.py`](../agent/finetune/reinflow/buffer_grpo.py) |
+| GRPO agent (state) | [`train_grpo_flow_agent.py`](../agent/finetune/reinflow/train_grpo_flow_agent.py) |
+| GRPO agent (image) | [`train_grpo_flow_img_agent.py`](../agent/finetune/reinflow/train_grpo_flow_img_agent.py) |
+| GRPO + Score-SDE model | [`grpoflow_with_score_gammanet.py`](../model/flow/ft_ppo/grpoflow_with_score_gammanet.py) |
+| GRPO baseline model | [`grpoflow.py`](../model/flow/ft_ppo/grpoflow.py) |
+
+### GRPO-Specific Hyperparameters
+
+- `train.kl_coef`: KL penalty coefficient. Recommended `0.04` (state), `0.1~0.2` (image). Too high stops exploration; too low drifts from base policy.
+- `train.ent_coef`: Entropy regularization. Recommended `0.01` (image) / `0.03` (state) for GRPO.
+- Key differences from PPO: **no** `train.gamma`, `train.gae_lambda`, `train.value_loss_coef`, `model.critic.*`.
+
+### Invocation
+
+```bash
+# Robomimic GRPO + Score-SDE
+TASK=square SEED=42 KL_COEF=0.2 \
+    bash scripts/train/robomimic/train_robomimic_finetune-grpo.sh
+
+# Kitchen GRPO
+TASK=kitchen SEED=42 KL_COEF=0.04 \
+    bash scripts/train/gym/train_gym_finetune-grpo.sh
+```
+
+---
+
+## 3. ReinFlow / Flow Matching PPO Baseline (Drift-Only)
+
+PPO fine-tuning without score correction. Code entry points:
+
+| Component | Path |
+|---|---|
+| FlowMLP / NoisyFlowMLP / VisionFlowMLP | [`mlp_flow.py`](../model/flow/mlp_flow.py) |
+| ShortCutFlowMLP / NoisyShortCutFlowMLP | [`mlp_shortcut.py`](../model/flow/mlp_shortcut.py) |
+| State agent | [`train_ppo_flow_agent.py`](../agent/finetune/reinflow/train_ppo_flow_agent.py) |
+| Image agent | [`train_ppo_flow_img_agent.py`](../agent/finetune/reinflow/train_ppo_flow_img_agent.py) |
+
+### Key Hyperparameters
+
+- `min_std` / `max_std`: Noise std bounds at each denoising step.
+- `denoising_steps`: Number of denoising steps (consistent across pre-training and fine-tuning).
+- `ft_denoising_steps`: Actual fine-tuned steps counted backward from last step (default = `denoising_steps`).
+- `train.clip_intermediate_actions`: Enable during fine-tuning and evaluation to prevent action overflow.
+- `model.denoised_clip_value`: Max absolute denoised action, default `1`.
+- `model.randn_clip_value`: Max std multiplier per sample, default `3`.
+- `model.clip_ploss_coef`: PPO clipping $\epsilon$. State: `0.01`, visual: `0.001`.
+- `model.logprob_min` / `model.logprob_max`: Log-probability clipping range. Policy collapse appears as very negative logprob.
+- `model.noise_scheduler_type`: Noise schedule. Recommend `learn_decay` for state locomotion, `constant` for fixed noise.
+- `model.use_time_independent_noise`: Whether noise depends on observations and time.
+- `model.critic.out_bias_init`: Critic output layer bias. Set positive (e.g., 4.0) if critic outputs negative values despite high policy success.
+- `train.use_bc_loss` / `train.bc_loss_type` / `train.bc_loss_coeff`: Behavior cloning regularization (usually only for hopper).
+- `train.ent_coef`: Entropy coefficient. State: `0.03`, visual: `0`.
+
+---
+
+## 4. DPPO Baseline (Diffusion Policy + PPO)
+
+| Component | Path |
+|---|---|
+| Official DPPO agent | [`agent/finetune/dppo/train_ppo_diffusion_agent.py`](../agent/finetune/dppo/train_ppo_diffusion_agent.py) |
+| ReinFlow improved version (resume + verbose logging) | [`agent/finetune/reinflow/train_ppo_diffusion_agent.py`](../agent/finetune/reinflow/train_ppo_diffusion_agent.py) |
+| Image version | [`agent/finetune/reinflow/train_ppo_diffusion_img_agent.py`](../agent/finetune/reinflow/train_ppo_diffusion_img_agent.py) |
+
+### Key Hyperparameters
+
+- `denoising_steps`: Number of denoising steps (pre-train and fine-tune consistent).
+- `ft_denoising_steps`: Actual fine-tuned steps.
+- `horizon_steps`: Action chunk size (should equal `act_steps` for MLP).
 - `model.gamma_denoising`: Denoising discount factor.
-- `model.min_sampling_denoising_std`: Minimum noise when sampling at a denoising step.
-- `model.min_logprob_denoising_std`: Minimum standard deviation when evaluating likelihood at a denoising step.
+- `model.min_sampling_denoising_std`, `model.min_logprob_denoising_std`.
 - `model.clip_ploss_coef`: PPO clipping ratio.
-- `train.batch_size`: The batch size is relatively large due to PPO updates being in expectation over both environment and denoising steps (new in v0.6).
+- `train.batch_size`: DPPO uses large batches (takes expectation over both env and denoising steps).
 
-#### Fine-tuning DDIM with DPPO
+### DDIM Fine-tuning
 
-To use DDIM fine-tuning, set `denoising_steps=100` in pre-training, and set `model.use_ddim=True`, `model.ddim_steps` to the desired total DDIM steps, and `ft_denoising_steps` to the desired number of fine-tuned DDIM steps.  
-For example, in our Furniture-Bench experiments, we use `denoising_steps=100`, `model.ddim_steps=5`, and `ft_denoising_steps=5`.
-
-#### How does DPPO calculate log probabilities for DDIM?**  
-DPPO does not fine-tune a deterministic DDIM policy. Their DDIM uses `eta=1`, which closely resembles a DDPM, though the steps and coefficients differ. In contrast, ReinFlow directly processes a flow model with an ODE path.  See [this post](https://github.com/irom-princeton/dppo/issues/48) for details.
-
-#### DPPO Code Implementations
-
-**We provide two DPPO implementations**:
-- The official DPPO code: [agent/finetune/dppo/train_ppo_diffusion_agent.py](../agent/finetune/dppo/train_ppo_diffusion_agent.py)
-- The ReinFlow authors' version: [agent/finetune/reinflow/train_ppo_diffusion_agent.py](../agent/finetune/reinflow/train_ppo_diffusion_agent.py) and [agent/finetune/reinflow/train_ppo_diffusion_img_agent.py](../agent/finetune/reinflow/train_ppo_diffusion_img_agent.py), which adds verbose logging, training resume, more efficient memory allocation, and a clearer structure. This implementation also leverages inheritance for easier development.
-
-**Our recommendation**:
-We recommend using our version for a more flexible and maintainable implementation.  
-You are welcome to inherit our base class in [agent/finetune/reinflow/train_agent.py](../agent/finetune/reinflow/train_agent.py) to develop your own RL post-training algorithms.
+Pre-train with `denoising_steps=100`; fine-tune with `model.use_ddim=True`, `model.ddim_steps=<target>`, `ft_denoising_steps=<target>`.
 
 ---
 
-### FQL Implementation Details
+## 5. FQL (Offline-to-Online Flow Q-Learning) Baseline
 
-#### Key Hyperparameters
+| Hyperparameter | Meaning |
+|---|---|
+| `offline_steps` | Offline fine-tuning iterations |
+| `online_steps` | Online fine-tuning iterations |
+| `eval_base_model` | Debug: periodically eval base policy evolution |
 
-- `offline_steps`: Number of iterations for offline fine-tuning. For fair comparison, use the same number of data samples as in the pre-trained checkpoints of the online RL methods.
-- `online_steps`: Number of iterations for online fine-tuning.
-- `eval_base_model`: For verbose debugging, allows inspection of base model evolution during both offline and online training. Set to `False` if unnecessary.
-
----
-
-### Offline RL Baselines
-
-We inherit code from [DPPO](https://github.com/irom-princeton/dppo) and include training scripts for offline RL baselines in [../agent/finetune/offlinerl_baselines](../agent/finetune/offlinerl_baselines):
-
-- [Cal-QL](../agent/finetune/offlinerl_baselines/train_calql_agent.py)
-- [IBRL](../agent/finetune/offlinerl_baselines/train_ibrl_agent.py)
-- [RLPD](../agent/finetune/offlinerl_baselines/train_rlpd_agent.py)
-<!-- Add more as needed -->
+Entry example: `bash scripts/train/robomimic/train_square_fql.sh`
 
 ---
 
-### Offline-to-Online RL Baselines
+## 6. Offline RL Baselines (Cal-QL / IBRL / RLPD)
 
-It is possible to develop additional offline-to-online RL baselines based on the FQL implementation.  
-We leave this for future work and welcome community contributions!
+Inherited from DPPO, located in [`agent/finetune/offlinerl_baselines/`](../agent/finetune/offlinerl_baselines/):
+
+- [`train_calql_agent.py`](../agent/finetune/offlinerl_baselines/train_calql_agent.py)
+- [`train_ibrl_agent.py`](../agent/finetune/offlinerl_baselines/train_ibrl_agent.py)
+- [`train_rlpd_agent.py`](../agent/finetune/offlinerl_baselines/train_rlpd_agent.py)
 
 ---
 
-### Diffusion x RL Baselines
+## 7. Diffusion x RL Baselines (RWR / DAWR / DIPO / DQL / IDQL / QSM)
 
-We also inherit diffusion policy RL baselines from [DPPO](https://github.com/irom-princeton/dppo).  
-You can find the training scripts in [agent/finetune/diffusion_baselines](../agent/finetune/diffusion_baselines):
+Inherited from DPPO, located in [`agent/finetune/diffusion_baselines/`](../agent/finetune/diffusion_baselines/), used for fair comparison with ScoReFlow.
 
-- [RWR](agent/finetune/diffusion_baselines/train_rwr_diffusion_agent.py)
-- [DAWR](agent/finetune/diffusion_baselines/train_awr_diffusion_agent.py)
-- [DIPO](agent/finetune/diffusion_baselines/train_dipo_diffusion_agent.py)
-- [DQL](agent/finetune/diffusion_baselines/train_dql_diffusion_agent.py)
-- [IDQL](agent/finetune/diffusion_baselines/train_idql_diffusion_agent.py)
-- [QSM](agent/finetune/diffusion_baselines/train_qsm_diffusion_agent.py)
+---
+
+## 8. Adding a Custom RL Algorithm
+
+Inherit from [`agent/finetune/train_agent.py`](../agent/finetune/train_agent.py)'s `TrainAgent` base class,
+write a Hydra config in `cfg/.../ft_<your_algo>_*.yaml`,
+and set `_target_:` to point to your class. `run.py` will auto-load via `hydra.utils.get_class(cfg._target_)`.

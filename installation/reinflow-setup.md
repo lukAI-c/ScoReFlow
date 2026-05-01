@@ -184,7 +184,7 @@ If you want to obtain the training record of our experiments, consider download 
 ### 9. Other problems you may meet
 * cannot find /util
 This mean you have not yet installed the reinflow package. Please return to `7. Install ReinFlow package`. 
-If you meet problems installing this package, or refuse to install it, we also provide a workaround: insert the following code beofre your [script/run.py](/script/run.py): 
+If you meet problems installing this package, or refuse to install it, we also provide a workaround: insert the following code beofre your [run.py](/run.py): 
 ```python
 import os
 import sys

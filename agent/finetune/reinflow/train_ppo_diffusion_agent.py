@@ -24,8 +24,8 @@
 """
 DPPO fine-tuning.
 run this line to finetune hopper-v2: 
-python script/run.py --config-dir=cfg/gym/finetune/hopper-v2 --config-name=ft_ppo_diffusion_mlp device=cuda:7 wandb=null
-python script/run.py --config-dir=cfg/gym/finetune/hopper-v2 --config-name=ft_ppo_diffusion_mlp device=cuda:6 wandb=null
+python run.py --config-dir=cfg/gym/finetune/hopper-v2 --config-name=ft_ppo_diffusion_mlp device=cuda:7 wandb=null
+python run.py --config-dir=cfg/gym/finetune/hopper-v2 --config-name=ft_ppo_diffusion_mlp device=cuda:6 wandb=null
 """
 import logging
 log = logging.getLogger(__name__)

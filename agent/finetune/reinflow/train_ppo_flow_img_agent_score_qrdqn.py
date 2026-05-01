@@ -12,7 +12,7 @@ PPO Flow Agent with Image Input and QR-DQN Critic
     - 更鲁棒的价值估计
 
 运行示例:
-    python script/run.py --config-dir=cfg/robomimic/finetune/square \
+    python run.py --config-dir=cfg/robomimic/finetune/square \
         --config-name=ft_ppo_reflow_mlp_img_score_qrdqn
 """
 

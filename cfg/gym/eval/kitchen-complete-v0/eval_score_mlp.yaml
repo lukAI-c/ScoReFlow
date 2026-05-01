@@ -5,7 +5,7 @@
 # 其中 st(x) = (t * bt(x) - x) / (1 - t) 为分数函数
 #
 # 使用方法:
-#   python script/run.py --config-dir=cfg/gym/eval/kitchen-complete-v0 --config-name=eval_score_mlp \
+#   python run.py --config-dir=cfg/gym/eval/kitchen-complete-v0 --config-name=eval_score_mlp \
 #       base_policy_path=<your_checkpoint_path>
 #
 defaults:

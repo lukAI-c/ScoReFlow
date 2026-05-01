@@ -1,7 +1,12 @@
 
-## Recreating All the Plots in Our Paper
+## Reproducing Figures from the Paper
 
-- **Preparation:** Grab all files from the `visualize` branch in the ReinFlow repo and unzip to `<REINFLOW_DIR>/visualize/`.
+> The following commands assume you have already pulled all wandb-exported CSV data from the repo's `visualize` branch
+> and extracted to `${REINFLOW_DIR}/visualize/`. All visualize scripts are located in [`agent/eval/visualize/`](../agent/eval/visualize/)
+> and must be run from **the project root directory**.
+>
+> If CSV data for a figure is not in your `visualize/Final_experiments/data/`, either run the corresponding fine-tuning experiment
+> or download pre-exported CSVs from the authors' repository.
 
 ### Figure 1: Wall Time Efficiency in OpenAI Gym
 ```bash
