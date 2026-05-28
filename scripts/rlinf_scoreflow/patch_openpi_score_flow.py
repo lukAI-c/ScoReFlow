@@ -88,6 +88,14 @@ def patch_openpi_action_model(path: Path) -> bool:
         )
         torch.nn.init.constant_(self.score_flow_alpha_net[-2].weight, 0.0)
         torch.nn.init.constant_(self.score_flow_alpha_net[-2].bias, init_bias)
+        try:
+            ref_param = next(
+                param for name, param in self.named_parameters()
+                if not name.startswith("score_flow_alpha_net.")
+            )
+            self.score_flow_alpha_net.to(device=ref_param.device, dtype=ref_param.dtype)
+        except StopIteration:
+            pass
 
     def _score_flow_time(self, x_t, t_input):
         if t_input.ndim == x_t.ndim:
@@ -109,8 +117,9 @@ def patch_openpi_action_model(path: Path) -> bool:
         return score_t
 
     def _score_flow_alpha(self, t_scalar, dtype):
+        alpha_param = next(self.score_flow_alpha_net.parameters())
         t_in = t_scalar.detach().reshape(-1, 1).to(
-            device=t_scalar.device, dtype=torch.float32
+            device=alpha_param.device, dtype=alpha_param.dtype
         )
         alpha_t = self.score_flow_alpha_net(t_in)
         if bool(getattr(self.config, "score_flow_use_time_mask", True)):
