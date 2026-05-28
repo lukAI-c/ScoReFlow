@@ -96,10 +96,10 @@ model_dir_for_suite() {
 method_overrides() {
   case "$1" in
     flow_noise_baseline)
-      echo "actor.model.openpi.noise_method=flow_noise actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0"
       ;;
     scoreflow_original)
-      echo "actor.model.openpi.noise_method=flow_noise actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=learned_alpha ++actor.model.openpi.score_flow_scale=1.0 ++actor.model.openpi.score_flow_clip_norm=10.0 ++actor.model.openpi.score_flow_alpha_hidden_dim=16 ++actor.model.openpi.score_flow_alpha_init_bias=-2.0 ++actor.model.openpi.score_flow_alpha_max=2.0 ++actor.model.openpi.score_flow_use_time_mask=true"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=learned_alpha ++actor.model.openpi.score_flow_scale=1.0 ++actor.model.openpi.score_flow_clip_norm=10.0 ++actor.model.openpi.score_flow_alpha_hidden_dim=16 ++actor.model.openpi.score_flow_alpha_init_bias=-2.0 ++actor.model.openpi.score_flow_alpha_max=2.0 ++actor.model.openpi.score_flow_use_time_mask=true"
       ;;
     *)
       echo "Unsupported method: $1" >&2
