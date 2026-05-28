@@ -49,6 +49,8 @@ python -m py_compile \
 RLINF_ROOT=/path/to/RLinf \
 PYTHON_BIN=/path/to/RLinf/.venv/bin/python \
 MODEL_DIR=/path/to/RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT \
+LIBERO_EXTRA_PYTHONPATH=/path/to/LIBERO/libero \
+OSMESA_LIBRARY_DIR=/path/to/osmesa_runtime/lib \
 SUITES="libero_spatial libero_object libero_goal libero_10 maniskill metaworld_mt50 calvin_d_d" \
 SEEDS="42 43 44" \
 bash scripts/rlinf_scoreflow/run_score_flow_benchmark.sh
