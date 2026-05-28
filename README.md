@@ -26,9 +26,11 @@ score_flow_mode=learned_alpha
 
 ```text
 scripts/rlinf_scoreflow/patch_openpi_score_flow.py
+scripts/rlinf_scoreflow/run_score_flow_benchmark.sh
 scripts/rlinf_scoreflow/run_libero_score_flow.sh
 scripts/rlinf_scoreflow/collect_libero_score_flow.py
 docs/RLinfScoreFlow.md
+docs/PiRLComparisonPlan.md
 ```
 
 ## Patch RLinf
@@ -47,9 +49,9 @@ python -m py_compile \
 RLINF_ROOT=/path/to/RLinf \
 PYTHON_BIN=/path/to/RLinf/.venv/bin/python \
 MODEL_DIR=/path/to/RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT \
-SUITES="libero_spatial" \
+SUITES="libero_spatial libero_object libero_goal libero_10 maniskill metaworld_mt50 calvin_d_d" \
 SEEDS="42 43 44" \
-bash scripts/rlinf_scoreflow/run_libero_score_flow.sh
+bash scripts/rlinf_scoreflow/run_score_flow_benchmark.sh
 ```
 
 Default comparison:
@@ -71,4 +73,4 @@ Use at least three seeds before treating a result as main-table evidence.
 
 ## Notes
 
-This repository is a clean method-transfer branch. For implementation details and method boundary, see [docs/RLinfScoreFlow.md](docs/RLinfScoreFlow.md).
+This repository is a clean method-transfer branch. For implementation details and method boundary, see [docs/RLinfScoreFlow.md](docs/RLinfScoreFlow.md). For the pi_RL comparison matrix, see [docs/PiRLComparisonPlan.md](docs/PiRLComparisonPlan.md).

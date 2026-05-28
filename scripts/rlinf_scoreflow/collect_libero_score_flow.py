@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect RLinf LIBERO Score-Flow results into CSV summaries."""
+"""Collect RLinf Score-Flow benchmark results into CSV summaries."""
 
 from __future__ import annotations
 
@@ -9,6 +9,17 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+
+KNOWN_SUITES = (
+    "metaworld_mt50",
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10",
+    "calvin_d_d",
+    "maniskill",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,9 +45,10 @@ def split_run_name(run_name: str) -> tuple[str, str, str]:
     if "_seed" not in run_name:
         return "unknown", run_name, "unknown"
     prefix, seed = run_name.rsplit("_seed", 1)
-    parts = prefix.split("_")
-    if len(parts) >= 3 and parts[0] == "libero":
-        return "_".join(parts[:2]), "_".join(parts[2:]), seed
+    for suite in KNOWN_SUITES:
+        marker = f"{suite}_"
+        if prefix.startswith(marker):
+            return suite, prefix[len(marker) :], seed
     return "unknown", prefix, seed
 
 
@@ -90,20 +102,38 @@ def select_tag(scalars: pd.DataFrame, keywords: tuple[str, ...]) -> str | None:
     return None
 
 
+def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, str]:
+    if scalars.empty:
+        return {}
+    candidates = {
+        "final_success": ("success",),
+        "final_return": ("return",),
+        "final_reward": ("reward",),
+        "final_avg_subtasks": ("subtask",),
+        "final_len1": ("len", "1"),
+        "final_len2": ("len", "2"),
+        "final_len3": ("len", "3"),
+        "final_len4": ("len", "4"),
+        "final_len5": ("len", "5"),
+    }
+    tags: dict[str, str] = {}
+    for name, keywords in candidates.items():
+        tag = select_tag(scalars, keywords)
+        if tag is not None:
+            tags[name] = tag
+    return tags
+
+
 def summarize(manifest: pd.DataFrame, scalars: pd.DataFrame, min_seeds: int) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    success_tag = select_tag(scalars, ("success",))
-    reward_tag = select_tag(scalars, ("reward",)) or select_tag(scalars, ("return",))
+    metric_tags = selected_metric_tags(scalars)
     if scalars.empty:
         return manifest.copy()
 
     for run_name, group in scalars.groupby("run_name"):
         suite, method, seed = split_run_name(str(run_name))
         row: dict[str, Any] = {"suite": suite, "method": method, "seed": seed, "run_name": run_name}
-        for name, tag in [("final_success", success_tag), ("final_reward", reward_tag)]:
-            if tag is None:
-                row[name] = math.nan
-                continue
+        for name, tag in metric_tags.items():
             values = group[group["tag"] == tag].sort_values("step")
             row[name] = values["value"].iloc[-1] if not values.empty else math.nan
             row[f"{name}_tag"] = tag
@@ -118,7 +148,7 @@ def summarize(manifest: pd.DataFrame, scalars: pd.DataFrame, min_seeds: int) -> 
     for (suite, method), group in complete.groupby(["suite", "method"]):
         seed_count = group["seed"].astype(str).nunique()
         row = {"suite": suite, "method": method, "num_seeds": seed_count, "main_table": seed_count >= min_seeds}
-        for metric in ["final_success", "final_reward"]:
+        for metric in metric_tags:
             if metric in group:
                 row[f"{metric}_mean"] = group[metric].mean()
                 row[f"{metric}_std"] = group[metric].std()
@@ -136,9 +166,9 @@ def main() -> None:
     scalars = load_scalars(args.exp_root)
     summary = summarize(manifest, scalars, args.min_seeds)
 
-    manifest.to_csv(args.output_dir / "scoreflow_libero_manifest.csv", index=False)
-    scalars.to_csv(args.output_dir / "scoreflow_libero_raw_scalars.csv", index=False)
-    summary.to_csv(args.output_dir / "scoreflow_libero_summary.csv", index=False)
+    manifest.to_csv(args.output_dir / "scoreflow_benchmark_manifest.csv", index=False)
+    scalars.to_csv(args.output_dir / "scoreflow_benchmark_raw_scalars.csv", index=False)
+    summary.to_csv(args.output_dir / "scoreflow_benchmark_summary.csv", index=False)
 
 
 if __name__ == "__main__":

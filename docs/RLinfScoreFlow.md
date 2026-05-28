@@ -31,8 +31,10 @@ Excluded:
 
 - `scripts/rlinf_scoreflow/patch_openpi_score_flow.py`
   - Patches RLinf's `rlinf/models/embodiment/openpi/openpi_action_model.py`.
+- `scripts/rlinf_scoreflow/run_score_flow_benchmark.sh`
+  - Runs matched benchmark jobs after applying the patch.
 - `scripts/rlinf_scoreflow/run_libero_score_flow.sh`
-  - Runs matched LIBERO jobs after applying the patch.
+  - Backward-compatible wrapper for LIBERO-only use.
 - `scripts/rlinf_scoreflow/collect_libero_score_flow.py`
   - Collects TensorBoard scalars and produces CSV summaries.
 
@@ -53,9 +55,9 @@ Run LIBERO:
 RLINF_ROOT=/path/to/RLinf \
 PYTHON_BIN=/path/to/RLinf/.venv/bin/python \
 MODEL_DIR=/path/to/RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT \
-SUITES="libero_spatial" \
+SUITES="libero_spatial libero_object libero_goal libero_10 maniskill metaworld_mt50 calvin_d_d" \
 SEEDS="42 43 44" \
-bash scripts/rlinf_scoreflow/run_libero_score_flow.sh
+bash scripts/rlinf_scoreflow/run_score_flow_benchmark.sh
 ```
 
 Collect:
