@@ -12,6 +12,33 @@ REMOTE_ACTOR = Path("rlinf/workers/actor/fsdp_actor_worker.py")
 BACKUP_SUFFIX = ".pre_cr_reflow_actor_backup"
 MARKER = "CR_REFLOW_ACTOR_PATCH_V1"
 
+CR_RECORD_METRICS_OLD = '''def _cr_reflow_record_metrics(metrics_data, output_dict) -> None:
+    diag = output_dict.get("cr_reflow_diag", {}) or {}
+    for key, value in diag.items():
+        if isinstance(value, str):
+            metrics_data[f"actor/{key}"] = value
+        elif isinstance(value, (int, float, bool, torch.Tensor)):
+            metrics_data[f"actor/{key}"] = _cr_reflow_scalar(value)
+'''
+
+CR_RECORD_METRICS_NEW = '''CR_REFLOW_MODE_CODES = {
+    "cr_reflow_no_anchor": 1.0,
+    "cr_reflow": 2.0,
+}
+
+
+def _cr_reflow_record_metrics(metrics_data, output_dict) -> None:
+    diag = output_dict.get("cr_reflow_diag", {}) or {}
+    for key, value in diag.items():
+        if key == "cr_reflow_mode" and isinstance(value, str):
+            mode_code = CR_REFLOW_MODE_CODES.get(value)
+            if mode_code is not None:
+                metrics_data["actor/cr_reflow_mode_code"] = mode_code
+            continue
+        if isinstance(value, (int, float, bool, torch.Tensor)):
+            metrics_data[f"actor/{key}"] = _cr_reflow_scalar(value)
+'''
+
 
 HELPER_BLOCK = f'''
 
@@ -44,13 +71,7 @@ def _cr_reflow_forward_inputs(forward_inputs, advantages, loss_mask):
     return enriched
 
 
-def _cr_reflow_record_metrics(metrics_data, output_dict) -> None:
-    diag = output_dict.get("cr_reflow_diag", {{}}) or {{}}
-    for key, value in diag.items():
-        if isinstance(value, str):
-            metrics_data[f"actor/{{key}}"] = value
-        elif isinstance(value, (int, float, bool, torch.Tensor)):
-            metrics_data[f"actor/{{key}}"] = _cr_reflow_scalar(value)
+{CR_RECORD_METRICS_NEW}
 '''
 
 
@@ -156,6 +177,13 @@ def patch_text(text: str) -> tuple[str, bool]:
             "helper insertion",
         )
         changed = changed or did_replace
+    text, did_replace = replace_once(
+        text,
+        CR_RECORD_METRICS_OLD,
+        CR_RECORD_METRICS_NEW,
+        "numeric CR-Reflow diagnostic logging",
+    )
+    changed = changed or did_replace
     text, did_replace = replace_once(
         text,
         FORWARD_INPUTS_OLD,

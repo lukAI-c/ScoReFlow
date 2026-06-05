@@ -170,3 +170,110 @@ The generated commands use `runner.max_epochs=15`, `env.train.total_num_envs=4`,
 
 This is launch-readiness evidence only. No CR-Reflow benchmark step was started,
 and these prepared rows must not be reported as method performance.
+
+## Round 3 Live CR-Reflow Readiness
+
+Round 3 fixed three launch blockers before the live check:
+
+- `patch_rlinf_cr_reflow_actor.py` now encodes `cr_reflow_mode` as numeric
+  `actor/cr_reflow_mode_code` and skips non-scalar diagnostics in actor scalar
+  logging.
+- `patch_openpi_score_flow.py` now installs only onto an identical target, the
+  recorded pre-CR backup hash, or a marker-compatible Score-Flow/TR target; an
+  unexpected remote target aborts and writes a `.unexpected_scoreflow_target.diff`
+  evidence file.
+- `collect_libero_score_flow.py` now prefers exact CR scalar tags, including the
+  remote TensorBoard `train/actor/...` prefix, and handles bounded-stop readiness
+  logs whose manifest has no completed `status` row.
+
+Remote deployment on the H100 notebook used:
+
+```text
+ScoreFlow checkout: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/ScoReFlow-RLinf-ScoreFlow-clean
+RLinf checkout: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf
+Pi0.5 LIBERO model: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/models/RLinf-Pi05-LIBERO-SFT
+Readiness EXP_ROOT: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf/logs/cr_reflow_round3_readiness_live_20260605_203440
+```
+
+Remote patch and compile evidence:
+
+```text
+patched=False compatibility=identical .../RLinf/rlinf/models/embodiment/openpi/openpi_action_model.py
+patched=True would_patch=False check=False .../RLinf/rlinf/workers/actor/fsdp_actor_worker.py
+remote py_compile passed for openpi_action_model.py, fsdp_actor_worker.py, and collect_libero_score_flow.py
+```
+
+Bounded real launches were run with the real pi0.5 LIBERO Spatial preset:
+
+```text
+--config-name libero_spatial_ppo_openpi_pi05
+runner.max_epochs=15
+env.train.total_num_envs=4
+env.eval.total_num_envs=8
+actor.seed=42
+actor.model.model_path=$R/models/RLinf-Pi05-LIBERO-SFT
+rollout.model.model_path=$R/models/RLinf-Pi05-LIBERO-SFT
+```
+
+Both CR methods reached real rollout/eval/actor-update execution before being
+bounded-stopped:
+
+| method | seed | event evidence | stop evidence |
+| --- | ---: | --- | --- |
+| `cr_reflow_no_anchor` | 42 | `.../libero_spatial_cr_reflow_no_anchor_seed42/tensorboard/events.out.tfevents.*` | `outer_exit_code_cr_reflow_no_anchor.txt` recorded `143` after manual bounded stop |
+| `cr_reflow` | 42 | `.../libero_spatial_cr_reflow_seed42/tensorboard/events.out.tfevents.*` | `outer_exit_code_cr_reflow.txt` recorded `143` after manual bounded stop |
+
+The collector output was written to:
+
+```text
+$EXP_ROOT/collected/scoreflow_benchmark_summary.csv
+$EXP_ROOT/collected/scoreflow_benchmark_raw_scalars.csv
+$EXP_ROOT/collected/scoreflow_benchmark_manifest.csv
+```
+
+Readiness scalar summary:
+
+| method | seed | approx_kl | cr_loss | actor_loss | anchor_loss | eta | ESS | valid_fraction | chain_kl_proxy | chain_displacement | mode_code |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cr_reflow_no_anchor` | 42 | 0.004954 | 0.988706 | 0.988706 | 0.000000 | 3.088232 | 0.909466 | 1.000000 | 0.494353 | 5.840227 | 1.0 |
+| `cr_reflow` | 42 | 0.026305 | 0.999127 | 0.999257 | 0.001298 | 2.888686 | 0.895039 | 0.723958 | 0.499564 | 5.813925 | 2.0 |
+
+The selected CR tags were exact preferred matches against remote TensorBoard
+tags such as `train/actor/cr_reflow_loss`,
+`train/actor/cr_reflow_actor_loss`, and
+`train/actor/cr_reflow_mode_code`.
+
+This is launch-readiness and diagnostic evidence only. It is not a completed
+method-performance comparison because both readiness jobs were intentionally
+terminated after the first actor-update evidence was available.
+
+## Round 3 Real Comparison Launch
+
+After the bounded readiness checks passed, the planned real comparison was
+started detached on the same H100 notebook:
+
+```text
+Comparison EXP_ROOT: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf/logs/cr_reflow_round3_comparison_20260605_140344
+Launcher PID: 3056367
+Initial run: libero_spatial_flow_noise_baseline_seed42
+```
+
+The launcher uses:
+
+```text
+REAL_CONFIG_PRESET=1
+PREPARE_ONLY=0
+SEEDS="42 43 44"
+METHODS="flow_noise_baseline tr_scalar_l2 cr_reflow_no_anchor cr_reflow"
+```
+
+Initial launcher log:
+
+```text
+patched=False compatibility=identical .../openpi_action_model.py
+patched=False would_patch=False check=False .../fsdp_actor_worker.py
+[Fri Jun  5 14:03:44 UTC 2026] START libero_spatial_flow_noise_baseline_seed42
+```
+
+The H100 notebook is intentionally left running while this approved comparison
+job is active.

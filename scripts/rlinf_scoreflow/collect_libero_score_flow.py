@@ -19,6 +19,8 @@ KNOWN_SUITES = (
     "maniskill",
 )
 
+MetricTagSelection = tuple[str, str]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -91,52 +93,92 @@ def load_scalars(exp_root: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def select_tag(scalars: pd.DataFrame, keywords: tuple[str, ...]) -> str | None:
+def select_tag(
+    scalars: pd.DataFrame,
+    keywords: tuple[str, ...],
+    preferred: tuple[str, ...] = (),
+) -> tuple[str | None, str | None]:
     if scalars.empty:
-        return None
+        return None, None
     tags = sorted(str(tag) for tag in scalars["tag"].dropna().unique())
+    tag_set = set(tags)
+    for tag in preferred:
+        if tag in tag_set:
+            return tag, "preferred"
+        train_tag = f"train/{tag}"
+        if train_tag in tag_set:
+            return train_tag, "preferred"
     for tag in tags:
         lower = tag.lower()
         if "eval" in lower and all(keyword in lower for keyword in keywords):
-            return tag
+            return tag, "fallback_eval_keyword"
     for tag in tags:
         lower = tag.lower()
         if all(keyword in lower for keyword in keywords):
-            return tag
-    return None
+            return tag, "fallback_keyword"
+    return None, None
 
 
-def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, str]:
+def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, MetricTagSelection]:
     if scalars.empty:
         return {}
     candidates = {
-        "final_success": ("success",),
-        "final_return": ("return",),
-        "final_reward": ("reward",),
-        "final_avg_subtasks": ("subtask",),
-        "final_len1": ("len", "1"),
-        "final_len2": ("len", "2"),
-        "final_len3": ("len", "3"),
-        "final_len4": ("len", "4"),
-        "final_len5": ("len", "5"),
-        "final_approx_kl": ("approx", "kl"),
-        "final_scalar_l2_disp": ("scalar", "l2", "disp"),
-        "final_pullback_disp": ("pullback", "disp"),
-        "final_terminal_pullback_loss": ("terminal", "pullback", "loss"),
-        "final_cr_reflow_loss": ("cr", "reflow", "loss"),
-        "final_cr_reflow_anchor_loss": ("cr", "reflow", "anchor"),
-        "final_cr_reflow_eta": ("cr", "reflow", "eta"),
-        "final_cr_reflow_weight_ess": ("cr", "reflow", "ess"),
-        "final_cr_reflow_weight_max": ("cr", "reflow", "weight", "max"),
-        "final_cr_reflow_valid_fraction": ("cr", "reflow", "valid", "fraction"),
-        "final_cr_reflow_chain_kl_proxy": ("cr", "reflow", "chain", "kl"),
-        "final_cr_reflow_chain_displacement": ("cr", "reflow", "chain", "displacement"),
+        "final_success": (("success",), ()),
+        "final_return": (("return",), ()),
+        "final_reward": (("reward",), ()),
+        "final_avg_subtasks": (("subtask",), ()),
+        "final_len1": (("len", "1"), ()),
+        "final_len2": (("len", "2"), ()),
+        "final_len3": (("len", "3"), ()),
+        "final_len4": (("len", "4"), ()),
+        "final_len5": (("len", "5"), ()),
+        "final_approx_kl": (("approx", "kl"), ("actor/approx_kl",)),
+        "final_scalar_l2_disp": (("scalar", "l2", "disp"), ("actor/scalar_l2_disp",)),
+        "final_pullback_disp": (("pullback", "disp"), ("actor/pullback_disp",)),
+        "final_terminal_pullback_loss": (
+            ("terminal", "pullback", "loss"),
+            ("actor/terminal_pullback_loss",),
+        ),
+        "final_cr_reflow_loss": (("cr", "reflow", "loss"), ("actor/cr_reflow_loss",)),
+        "final_cr_reflow_actor_loss": (
+            ("cr", "reflow", "actor", "loss"),
+            ("actor/cr_reflow_actor_loss",),
+        ),
+        "final_cr_reflow_anchor_loss": (
+            ("cr", "reflow", "anchor"),
+            ("actor/cr_reflow_anchor_loss",),
+        ),
+        "final_cr_reflow_eta": (("cr", "reflow", "eta"), ("actor/cr_reflow_eta",)),
+        "final_cr_reflow_weight_ess": (
+            ("cr", "reflow", "ess"),
+            ("actor/cr_reflow_weight_ess",),
+        ),
+        "final_cr_reflow_weight_max": (
+            ("cr", "reflow", "weight", "max"),
+            ("actor/cr_reflow_weight_max",),
+        ),
+        "final_cr_reflow_valid_fraction": (
+            ("cr", "reflow", "valid", "fraction"),
+            ("actor/cr_reflow_valid_fraction",),
+        ),
+        "final_cr_reflow_chain_kl_proxy": (
+            ("cr", "reflow", "chain", "kl"),
+            ("actor/cr_reflow_chain_kl_proxy",),
+        ),
+        "final_cr_reflow_chain_displacement": (
+            ("cr", "reflow", "chain", "displacement"),
+            ("actor/cr_reflow_chain_displacement",),
+        ),
+        "final_cr_reflow_mode_code": (
+            ("cr", "reflow", "mode", "code"),
+            ("actor/cr_reflow_mode_code",),
+        ),
     }
-    tags: dict[str, str] = {}
-    for name, keywords in candidates.items():
-        tag = select_tag(scalars, keywords)
+    tags: dict[str, MetricTagSelection] = {}
+    for name, (keywords, preferred) in candidates.items():
+        tag, source = select_tag(scalars, keywords, preferred)
         if tag is not None:
-            tags[name] = tag
+            tags[name] = (tag, source or "unknown")
     return tags
 
 
@@ -164,10 +206,11 @@ def summarize(
     for run_name, group in scalars.groupby("run_name"):
         suite, method, seed = split_run_name(str(run_name))
         row: dict[str, Any] = {"suite": suite, "method": method, "seed": seed, "run_name": run_name}
-        for name, tag in metric_tags.items():
+        for name, (tag, tag_source) in metric_tags.items():
             values = group[group["tag"] == tag].sort_values("step")
             row[name] = values["value"].iloc[-1] if not values.empty else math.nan
             row[f"{name}_tag"] = tag
+            row[f"{name}_tag_source"] = tag_source
             if name == "final_success":
                 row["terminal_collapse"] = collapse_flag(
                     values,
@@ -181,7 +224,11 @@ def summarize(
         summary = manifest.merge(summary, on=["suite", "method", "seed", "run_name"], how="outer")
 
     agg_rows: list[dict[str, Any]] = []
-    complete = summary[summary.get("status", "done").fillna("done") == "done"]
+    if "status" in summary:
+        status = summary["status"].fillna("done")
+    else:
+        status = pd.Series("done", index=summary.index)
+    complete = summary[status == "done"]
     for (suite, method), group in complete.groupby(["suite", "method"]):
         seed_count = group["seed"].astype(str).nunique()
         row = {"suite": suite, "method": method, "num_seeds": seed_count, "main_table": seed_count >= min_seeds}
