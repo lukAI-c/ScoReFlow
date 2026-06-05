@@ -430,6 +430,10 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         old_means = kwargs.get("old_means", forward_inputs.get("old_means"))
         old_stds = kwargs.get("old_stds", forward_inputs.get("old_stds"))
         advantages = kwargs.get("advantages", forward_inputs.get("advantages"))
+        cr_reflow_mask = kwargs.get(
+            "cr_reflow_mask",
+            forward_inputs.get("cr_reflow_mask", forward_inputs.get("loss_mask")),
+        )
         # input transform
         observation = self.input_transform(forward_inputs, transpose=False)
         observation = _model.Observation.from_dict(observation)
@@ -470,6 +474,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             old_stds,
             advantages,
             value_t,
+            cr_reflow_mask,
         )
         log_probs = log_probs[
             :, :, : self.config.action_chunk, : self.config.action_env_dim
@@ -1918,6 +1923,9 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_mean": 0.0,
             "cr_reflow_weight_max": 0.0,
             "cr_reflow_weight_ess": 0.0,
+            "cr_reflow_valid_fraction": 0.0,
+            "cr_reflow_chain_kl_proxy": 0.0,
+            "cr_reflow_chain_displacement": 0.0,
             "cr_reflow_used_advantages": False,
         }
 
@@ -1942,6 +1950,35 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             selected.append(tensor[batch_indices, denoise_ind])
         return torch.stack(selected, dim=1)
 
+    def _cr_prepare_mask(
+        self,
+        mask,
+        batch_size,
+        num_terms,
+        device,
+    ):
+        if mask is None:
+            full_mask = torch.ones(batch_size, num_terms, device=device, dtype=torch.float32)
+            return full_mask, 1.0
+
+        prepared = mask.detach().to(device=device)
+        while prepared.ndim > 2:
+            prepared = prepared.mean(dim=-1)
+        if prepared.ndim == 1:
+            prepared = prepared[:, None]
+        if prepared.shape[0] != batch_size:
+            prepared = prepared.reshape(batch_size, -1)
+        if prepared.shape[1] == 1 and num_terms > 1:
+            prepared = prepared.expand(-1, num_terms)
+        elif prepared.shape[1] != num_terms:
+            prepared = prepared.mean(dim=1, keepdim=True).expand(-1, num_terms)
+
+        prepared = prepared[:, :num_terms].float()
+        prepared = torch.where(torch.isfinite(prepared), prepared, torch.zeros_like(prepared))
+        prepared = (prepared > 0).float()
+        valid_fraction = float(prepared.mean().detach().cpu().item()) if prepared.numel() else 0.0
+        return prepared, valid_fraction
+
     def _cr_prepare_advantages(
         self,
         advantages,
@@ -1949,6 +1986,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         num_terms,
         device,
         dtype,
+        mask,
     ):
         batch_size = values.shape[0]
         if advantages is None:
@@ -1967,7 +2005,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             adv = adv.mean(dim=1, keepdim=True).expand(-1, num_terms)
         adv = adv[:, :num_terms]
 
-        finite = torch.isfinite(adv)
+        mask_bool = mask > 0
+        finite = torch.isfinite(adv) & mask_bool
         if not bool(finite.any()):
             return torch.zeros_like(adv), False
         finite_values = adv[finite]
@@ -1975,19 +2014,25 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         adv_std = finite_values.std(unbiased=False).clamp_min(
             float(getattr(self.config, "cr_reflow_eps", 1.0e-6))
         )
-        adv = torch.where(finite, adv, adv_mean)
-        return (adv - adv_mean) / adv_std, True
+        adv = torch.where(torch.isfinite(adv), adv, adv_mean)
+        adv = (adv - adv_mean) / adv_std
+        adv = torch.where(mask_bool, adv, torch.zeros_like(adv))
+        return adv, True
 
-    def _cr_weights_from_advantages(self, advantages, used_advantages):
+    def _cr_weights_from_advantages(self, advantages, used_advantages, mask):
+        mask = mask.to(device=advantages.device, dtype=advantages.dtype)
+        valid = mask > 0
+        num_valid = int(valid.sum().detach().cpu().item())
+        if num_valid == 0:
+            return torch.zeros_like(advantages), 0.0, 0.0
+
         if not used_advantages:
-            return torch.ones_like(advantages), 0.0, 1.0
+            return mask, 0.0, 1.0
 
-        flat_adv = advantages.float().reshape(-1)
+        flat_adv = advantages.float()[valid]
         num_weights = int(flat_adv.numel())
-        if num_weights == 0:
-            return torch.ones_like(advantages), 0.0, 0.0
         if float(flat_adv.std(unbiased=False).detach().cpu().item()) <= 1.0e-8:
-            return torch.ones_like(advantages), 0.0, 1.0
+            return mask, 0.0, 1.0
 
         epsilon = max(float(getattr(self.config, "cr_reflow_kl_epsilon", 0.05)), 0.0)
         eta_min = max(float(getattr(self.config, "cr_reflow_eta_min", 0.01)), 1.0e-8)
@@ -2015,13 +2060,15 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             eta = hi
 
         probs = torch.softmax(flat_adv / eta, dim=0)
-        weights = (probs * float(num_weights)).reshape_as(advantages)
+        weights = torch.zeros_like(advantages, dtype=probs.dtype)
+        weights[valid] = probs * float(num_weights)
         clip_value = float(getattr(self.config, "cr_reflow_weight_clip", 10.0))
         if clip_value > 0.0:
             weights = weights.clamp(max=clip_value)
-        weights = weights / weights.mean().clamp_min(1.0e-12)
+        valid_mean = weights[valid].mean().clamp_min(1.0e-12)
+        weights = torch.where(valid, weights / valid_mean, torch.zeros_like(weights))
 
-        flat_weights = weights.float().reshape(-1)
+        flat_weights = weights.float()[valid]
         ess = flat_weights.sum().pow(2) / flat_weights.pow(2).sum().clamp_min(1.0e-12)
         ess_fraction = float((ess / max(num_weights, 1)).detach().cpu().item())
         return weights.to(dtype=advantages.dtype), float(eta), ess_fraction
@@ -2036,6 +2083,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         old_stds,
         advantages,
         values,
+        mask,
     ):
         if not self._cr_reflow_enabled():
             return self._cr_zero_outputs(chains.device)
@@ -2046,6 +2094,12 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         device = transition_means.device
         dtype = transition_means.dtype
         num_terms = int(transition_means.shape[1])
+        valid_mask, valid_fraction = self._cr_prepare_mask(
+            mask,
+            values.shape[0],
+            num_terms,
+            device,
+        )
         denoise_inds = denoise_inds.to(device=device)
         next_inds = (denoise_inds[:, :num_terms] + 1).clamp(max=chains.shape[1] - 1)
         batch_indices = torch.arange(chains.shape[0], device=device)
@@ -2085,12 +2139,23 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             num_terms,
             device,
             dtype,
+            valid_mask,
         )
         weights, eta, ess_fraction = self._cr_weights_from_advantages(
             normalized_adv,
             used_advantages,
+            valid_mask,
         )
-        weighted_reflow = (weights.float() * reflow_terms).sum() / weights.float().sum().clamp_min(1.0e-12)
+        weight_sum = weights.float().sum().clamp_min(1.0e-12)
+        weighted_reflow = (weights.float() * reflow_terms).sum() / weight_sum
+        chain_kl_proxy = 0.5 * weighted_reflow
+        displacement_terms = ((action_means.detach() - action_targets.detach()) / scale).float()
+        displacement_terms = displacement_terms.reshape(
+            displacement_terms.shape[0],
+            num_terms,
+            -1,
+        ).norm(dim=2)
+        chain_displacement = (weights.float() * displacement_terms).sum() / weight_sum
 
         anchor_loss = torch.zeros((), device=device, dtype=weighted_reflow.dtype)
         anchor_beta = float(getattr(self.config, "cr_reflow_anchor_beta", 0.1))
@@ -2098,7 +2163,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             action_old_means = self._tr_action_slice(selected_old_means)
             anchor_terms = ((action_means - action_old_means) / scale).float().pow(2)
             anchor_terms = anchor_terms.reshape(anchor_terms.shape[0], num_terms, -1).mean(dim=2)
-            anchor_loss = (weights.float() * anchor_terms).sum() / weights.float().sum().clamp_min(1.0e-12)
+            anchor_loss = (weights.float() * anchor_terms).sum() / weight_sum
 
         loss = weighted_reflow + anchor_beta * anchor_loss
         diag = {
@@ -2109,6 +2174,9 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_mean": float(weights.detach().float().mean().cpu().item()),
             "cr_reflow_weight_max": float(weights.detach().float().max().cpu().item()),
             "cr_reflow_weight_ess": ess_fraction,
+            "cr_reflow_valid_fraction": valid_fraction,
+            "cr_reflow_chain_kl_proxy": float(chain_kl_proxy.detach().cpu().item()),
+            "cr_reflow_chain_displacement": float(chain_displacement.detach().cpu().item()),
             "cr_reflow_used_advantages": used_advantages,
         }
         return loss, diag

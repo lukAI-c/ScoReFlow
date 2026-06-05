@@ -12,6 +12,22 @@ PYTHON_BIN="${PYTHON_BIN:-${RLINF_ROOT}/.venv/bin/python}"
 MODEL_DIR="${MODEL_DIR:-}"
 EXP_ROOT="${EXP_ROOT:-${RLINF_ROOT}/logs/scoreflow_original}"
 
+REAL_CONFIG_PRESET="${REAL_CONFIG_PRESET:-0}"
+PREPARE_ONLY="${PREPARE_ONLY:-0}"
+if [[ "${REAL_CONFIG_PRESET}" == "1" ]]; then
+  POLICY_VARIANT="${POLICY_VARIANT:-pi05}"
+  SUITES="${SUITES:-libero_spatial}"
+  SEEDS="${SEEDS:-42}"
+  METHODS="${METHODS:-cr_reflow_no_anchor cr_reflow}"
+  MAX_EPOCHS="${MAX_EPOCHS:-15}"
+  ROLLOUT_EPOCH="${ROLLOUT_EPOCH:-1}"
+  EVAL_ROLLOUT_EPOCH="${EVAL_ROLLOUT_EPOCH:-1}"
+  TRAIN_ENVS="${TRAIN_ENVS:-4}"
+  EVAL_ENVS="${EVAL_ENVS:-8}"
+  MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-4}"
+  GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-8}"
+fi
+
 POLICY_VARIANT="${POLICY_VARIANT:-pi0}"
 SUITES="${SUITES:-libero_spatial}"
 SEEDS="${SEEDS:-42 43 44}"
@@ -127,8 +143,11 @@ method_overrides() {
 patch_rlinf() {
   "${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/patch_openpi_score_flow.py" \
     --rlinf-root "${RLINF_ROOT}"
+  "${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/patch_rlinf_cr_reflow_actor.py" \
+    --rlinf-root "${RLINF_ROOT}"
   "${PYTHON_BIN}" -m py_compile \
-    "${RLINF_ROOT}/rlinf/models/embodiment/openpi/openpi_action_model.py"
+    "${RLINF_ROOT}/rlinf/models/embodiment/openpi/openpi_action_model.py" \
+    "${RLINF_ROOT}/rlinf/workers/actor/fsdp_actor_worker.py"
 }
 
 append_manifest_header() {
@@ -181,6 +200,15 @@ run_one() {
 
   printf "%q " "${cmd[@]}" > "${run_dir}/command.txt"
   echo >> "${run_dir}/command.txt"
+
+  if [[ "${PREPARE_ONLY}" == "1" ]]; then
+    end_time="$(date -Iseconds)"
+    echo "[$(date)] PREPARED ${run_name}"
+    printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+      "${suite}" "${config_name}" "${suite_model_dir}" "${method}" "${seed}" "${run_name}" "prepared" "${run_dir}" \
+      "${start_time}" "${end_time}" "0" >> "${MANIFEST}"
+    return
+  fi
 
   echo "[$(date)] START ${run_name}"
   set +e

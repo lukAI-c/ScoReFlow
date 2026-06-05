@@ -76,3 +76,97 @@ The local checkout does not contain `fsdp_actor_worker.py`, so this round expose
 `cr_reflow_loss` and `cr_reflow_diag` from the policy and records the remote
 actor file as the remaining integration point for adding the loss to the PPO
 objective, analogous to the existing remote `terminal_pullback_loss` hook.
+
+## Round 2 Remote Actor Integration
+
+Remote roots validated on the H100 notebook:
+
+```text
+ScoreFlow checkout: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/ScoReFlow-RLinf-ScoreFlow-clean
+RLinf checkout: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf
+Pi0.5 LIBERO model: /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/models/RLinf-Pi05-LIBERO-SFT
+```
+
+The real actor worker branch was inspected at:
+
+```text
+$R/RLinf/rlinf/workers/actor/fsdp_actor_worker.py
+```
+
+The embodied actor update path computes `loss, metrics_data = policy_loss(**kwargs)`,
+then applies entropy and the existing `terminal_pullback_loss` hook. Round 2 adds
+a backup-preserving installer for this real file:
+
+```text
+scripts/rlinf_scoreflow/patch_rlinf_cr_reflow_actor.py
+```
+
+Validated remote patch commands:
+
+```bash
+/usr/bin/python3 scripts/rlinf_scoreflow/patch_rlinf_cr_reflow_actor.py \
+  --rlinf-root /inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf \
+  --check
+```
+
+Observed output:
+
+```text
+patched=False would_patch=True check=True path=/inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf/rlinf/workers/actor/fsdp_actor_worker.py
+```
+
+The actual remote install then patched both OpenPI and the actor worker and
+compiled both files:
+
+```text
+patched=True source=.../ScoReFlow-RLinf-ScoreFlow-clean/openpi_action_model.LIVE.py path=.../RLinf/rlinf/models/embodiment/openpi/openpi_action_model.py
+patched=True would_patch=False check=False path=.../RLinf/rlinf/workers/actor/fsdp_actor_worker.py
+```
+
+The remote `py_compile` command completed with exit code 0 for:
+
+```text
+.../RLinf/rlinf/models/embodiment/openpi/openpi_action_model.py
+.../RLinf/rlinf/workers/actor/fsdp_actor_worker.py
+```
+
+## Round 2 Launch-Readiness Manifest
+
+The runner was executed in `PREPARE_ONLY=1` mode. This generated real pi0.5
+LIBERO Spatial commands and manifest rows without starting training:
+
+```bash
+RLINF_ROOT=/inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf \
+PYTHON_BIN=/usr/bin/python3 \
+SCOREFLOW_ROOT=/inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/ScoReFlow-RLinf-ScoreFlow-clean \
+MODEL_DIR=/inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/models/RLinf-Pi05-LIBERO-SFT \
+EXP_ROOT=/inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf/logs/cr_reflow_readiness_0605 \
+REAL_CONFIG_PRESET=1 \
+PREPARE_ONLY=1 \
+bash scripts/rlinf_scoreflow/run_score_flow_benchmark.sh
+```
+
+Observed output:
+
+```text
+PREPARED libero_spatial_cr_reflow_no_anchor_seed42
+PREPARED libero_spatial_cr_reflow_seed42
+```
+
+Prepared manifest rows:
+
+| suite | config | method | seed | status | exit |
+| --- | --- | --- | ---: | --- | ---: |
+| libero_spatial | libero_spatial_ppo_openpi_pi05 | cr_reflow_no_anchor | 42 | prepared | 0 |
+| libero_spatial | libero_spatial_ppo_openpi_pi05 | cr_reflow | 42 | prepared | 0 |
+
+The generated commands use `runner.max_epochs=15`, `env.train.total_num_envs=4`,
+`env.eval.total_num_envs=8`, `actor.model.openpi.noise_method=flow_noise`,
+`++actor.model.openpi.joint_logprob=true`, and either
+`++actor.model.openpi.cr_reflow_mode=cr_reflow_no_anchor` with
+`++actor.model.openpi.cr_reflow_anchor_beta=0.0`, or
+`++actor.model.openpi.cr_reflow_mode=cr_reflow` with
+`++actor.model.openpi.cr_reflow_anchor_beta=0.1`.
+
+This is launch-readiness evidence only. No CR-Reflow benchmark step was started,
+and these prepared rows must not be reported as method performance.

@@ -128,6 +128,9 @@ def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, str]:
         "final_cr_reflow_eta": ("cr", "reflow", "eta"),
         "final_cr_reflow_weight_ess": ("cr", "reflow", "ess"),
         "final_cr_reflow_weight_max": ("cr", "reflow", "weight", "max"),
+        "final_cr_reflow_valid_fraction": ("cr", "reflow", "valid", "fraction"),
+        "final_cr_reflow_chain_kl_proxy": ("cr", "reflow", "chain", "kl"),
+        "final_cr_reflow_chain_displacement": ("cr", "reflow", "chain", "displacement"),
     }
     tags: dict[str, str] = {}
     for name, keywords in candidates.items():
