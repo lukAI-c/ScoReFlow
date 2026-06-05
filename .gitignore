@@ -5,6 +5,7 @@ wandb_offline/
 wandb_merge/
 nohups_all/
 README-old.md
+.humanize/
 
 square_grid_search/
 .vscode/
