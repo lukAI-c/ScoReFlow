@@ -8,8 +8,6 @@ import math
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
 
 KNOWN_SUITES = (
     "metaworld_mt50",
@@ -27,10 +25,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--exp-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--min-seeds", type=int, default=3)
+    parser.add_argument("--collapse-window", type=int, default=3)
+    parser.add_argument("--collapse-threshold", type=float, default=0.25)
     return parser.parse_args()
 
 
 def load_manifest(exp_root: Path) -> pd.DataFrame:
+    import pandas as pd
+
     path = exp_root / "run_manifest.csv"
     if not path.exists():
         return pd.DataFrame()
@@ -53,6 +55,8 @@ def split_run_name(run_name: str) -> tuple[str, str, str]:
 
 
 def load_scalars(exp_root: Path) -> pd.DataFrame:
+    import pandas as pd
+
     try:
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
     except Exception:
@@ -115,6 +119,15 @@ def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, str]:
         "final_len3": ("len", "3"),
         "final_len4": ("len", "4"),
         "final_len5": ("len", "5"),
+        "final_approx_kl": ("approx", "kl"),
+        "final_scalar_l2_disp": ("scalar", "l2", "disp"),
+        "final_pullback_disp": ("pullback", "disp"),
+        "final_terminal_pullback_loss": ("terminal", "pullback", "loss"),
+        "final_cr_reflow_loss": ("cr", "reflow", "loss"),
+        "final_cr_reflow_anchor_loss": ("cr", "reflow", "anchor"),
+        "final_cr_reflow_eta": ("cr", "reflow", "eta"),
+        "final_cr_reflow_weight_ess": ("cr", "reflow", "ess"),
+        "final_cr_reflow_weight_max": ("cr", "reflow", "weight", "max"),
     }
     tags: dict[str, str] = {}
     for name, keywords in candidates.items():
@@ -124,7 +137,22 @@ def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, str]:
     return tags
 
 
-def summarize(manifest: pd.DataFrame, scalars: pd.DataFrame, min_seeds: int) -> pd.DataFrame:
+def collapse_flag(values: pd.DataFrame, window: int, threshold: float) -> bool | float:
+    if values.empty:
+        return math.nan
+    tail = values.sort_values("step")["value"].tail(max(window, 1))
+    return bool((tail <= threshold).all())
+
+
+def summarize(
+    manifest: pd.DataFrame,
+    scalars: pd.DataFrame,
+    min_seeds: int,
+    collapse_window: int,
+    collapse_threshold: float,
+) -> pd.DataFrame:
+    import pandas as pd
+
     rows: list[dict[str, Any]] = []
     metric_tags = selected_metric_tags(scalars)
     if scalars.empty:
@@ -137,6 +165,12 @@ def summarize(manifest: pd.DataFrame, scalars: pd.DataFrame, min_seeds: int) -> 
             values = group[group["tag"] == tag].sort_values("step")
             row[name] = values["value"].iloc[-1] if not values.empty else math.nan
             row[f"{name}_tag"] = tag
+            if name == "final_success":
+                row["terminal_collapse"] = collapse_flag(
+                    values,
+                    collapse_window,
+                    collapse_threshold,
+                )
         rows.append(row)
 
     summary = pd.DataFrame(rows)
@@ -152,6 +186,8 @@ def summarize(manifest: pd.DataFrame, scalars: pd.DataFrame, min_seeds: int) -> 
             if metric in group:
                 row[f"{metric}_mean"] = group[metric].mean()
                 row[f"{metric}_std"] = group[metric].std()
+        if "terminal_collapse" in group:
+            row["terminal_collapse_rate"] = group["terminal_collapse"].mean()
         agg_rows.append(row)
     aggregate = pd.DataFrame(agg_rows)
     if aggregate.empty:
@@ -164,7 +200,13 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(args.exp_root)
     scalars = load_scalars(args.exp_root)
-    summary = summarize(manifest, scalars, args.min_seeds)
+    summary = summarize(
+        manifest,
+        scalars,
+        args.min_seeds,
+        args.collapse_window,
+        args.collapse_threshold,
+    )
 
     manifest.to_csv(args.output_dir / "scoreflow_benchmark_manifest.csv", index=False)
     scalars.to_csv(args.output_dir / "scoreflow_benchmark_raw_scalars.csv", index=False)

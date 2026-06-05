@@ -97,6 +97,13 @@ class OpenPi0Config(Pi0Config):
     tr_penalty_mode: str = "none"  # none, scalar_l2, terminal_pullback
     tr_penalty_beta: float = 0.0
     tr_pullback_fd_eps: float = 1.0e-2
+    cr_reflow_mode: str = "none"  # none, cr_reflow, cr_reflow_no_anchor
+    cr_reflow_kl_epsilon: float = 0.05
+    cr_reflow_eta_min: float = 0.01
+    cr_reflow_eta_max: float = 10.0
+    cr_reflow_weight_clip: float = 10.0
+    cr_reflow_anchor_beta: float = 0.1
+    cr_reflow_eps: float = 1.0e-6
     # SPEC_FLOW_PATCH_V1
     spec_flow_mode: str = "none"  # none, cheap_draft, logprob, flow, composite
     spec_flow_draft_steps: int = 2
@@ -421,6 +428,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         chains = forward_inputs["chains"]
         denoise_inds = forward_inputs["denoise_inds"]
         old_means = kwargs.get("old_means", forward_inputs.get("old_means"))
+        old_stds = kwargs.get("old_stds", forward_inputs.get("old_stds"))
+        advantages = kwargs.get("advantages", forward_inputs.get("advantages"))
         # input transform
         observation = self.input_transform(forward_inputs, transpose=False)
         observation = _model.Observation.from_dict(observation)
@@ -439,6 +448,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             entropy,
             terminal_pullback_loss,
             tr_diag,
+            transition_means,
+            transition_stds,
         ) = self.get_log_prob_value(
             images,
             img_masks,
@@ -449,6 +460,16 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             denoise_inds,
             compute_values=compute_values,
             old_means=old_means,
+        )
+        cr_reflow_loss, cr_reflow_diag = self._compute_cr_reflow_loss(
+            chains,
+            denoise_inds,
+            transition_means,
+            transition_stds,
+            old_means,
+            old_stds,
+            advantages,
+            value_t,
         )
         log_probs = log_probs[
             :, :, : self.config.action_chunk, : self.config.action_env_dim
@@ -468,6 +489,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "entropy": entropy,
             "terminal_pullback_loss": terminal_pullback_loss,
             "tr_diag": tr_diag,
+            "cr_reflow_loss": cr_reflow_loss,
+            "cr_reflow_diag": cr_reflow_diag,
         }
 
     def nft_forward(
@@ -634,12 +657,14 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         )
         forward_inputs.update(cloned_obs)
 
-        # Carry per-step old transition means through forward_inputs (the channel that
-        # rides rollout->buffer->actor->recompute, same as chains/denoise_inds) so the
-        # Terminal-Pullback penalty can form delta_m = new - old at PPO time. Gated to
-        # avoid buffer overhead when the trust-region penalty is off (baseline arm).
-        if getattr(self.config, "tr_penalty_mode", "none") != "none":
+        # Carry old transition statistics through the rollout->buffer->actor channel
+        # only for methods that need teacher-forced transition recomputation.
+        if (
+            getattr(self.config, "tr_penalty_mode", "none") != "none"
+            or self._cr_reflow_enabled()
+        ):
             forward_inputs["old_means"] = outputs["old_means"]
+            forward_inputs["old_stds"] = outputs["old_stds"]
 
         result = {
             "prev_logprobs": prev_logprobs,
@@ -873,6 +898,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         log_probs = []
         values = []
         old_means = []
+        old_stds = []
         chains.append(x_t)
 
         # add value based on the vlm for pi05, expert for pi0
@@ -931,6 +957,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
                 compute_values,
             )
             old_means.append(x_t_mean.detach())
+            old_stds.append(x_t_std.detach())
             score_flow_diag = getattr(self, "_last_score_flow_diag", None)
             if score_flow_diag is not None:
                 guidance_diag_rows.append(
@@ -965,6 +992,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         x_0 = x_t
         chains = torch.stack(chains, dim=1)
         old_means = torch.stack(old_means, dim=1).detach()
+        old_stds = torch.stack(old_stds, dim=1).detach()
         # post process for logprob
         log_probs = torch.stack(log_probs, dim=1)[
             :, :, : self.config.action_chunk, : self.config.action_env_dim
@@ -988,6 +1016,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "prev_values": values,
             "denoise_inds": denoise_inds,
             "old_means": old_means,
+            "old_stds": old_stds,
         }
         if collect_nft_state:
             result.update(nft_state)
@@ -1875,6 +1904,215 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         }
         return penalty, tr_diag
 
+    def _cr_reflow_enabled(self) -> bool:
+        mode = str(getattr(self.config, "cr_reflow_mode", "none"))
+        return mode in {"cr_reflow", "cr_reflow_no_anchor"}
+
+    def _cr_zero_outputs(self, device):
+        zero = torch.zeros((), device=device)
+        return zero, {
+            "cr_reflow_mode": str(getattr(self.config, "cr_reflow_mode", "none")),
+            "cr_reflow_loss": 0.0,
+            "cr_reflow_anchor_loss": 0.0,
+            "cr_reflow_eta": 0.0,
+            "cr_reflow_weight_mean": 0.0,
+            "cr_reflow_weight_max": 0.0,
+            "cr_reflow_weight_ess": 0.0,
+            "cr_reflow_used_advantages": False,
+        }
+
+    def _cr_selected_transition_stats(
+        self,
+        tensor,
+        denoise_inds,
+        num_terms,
+        dtype,
+        device,
+    ):
+        if tensor is None:
+            return None
+        tensor = tensor.detach().to(device=device, dtype=dtype)
+        if tensor.ndim < 2:
+            return tensor
+        batch_indices = torch.arange(tensor.shape[0], device=device)
+        selected = []
+        for idx in range(num_terms):
+            denoise_ind = denoise_inds[:, idx].to(device=device)
+            denoise_ind = denoise_ind.clamp(min=0, max=tensor.shape[1] - 1)
+            selected.append(tensor[batch_indices, denoise_ind])
+        return torch.stack(selected, dim=1)
+
+    def _cr_prepare_advantages(
+        self,
+        advantages,
+        values,
+        num_terms,
+        device,
+        dtype,
+    ):
+        batch_size = values.shape[0]
+        if advantages is None:
+            return torch.zeros(batch_size, num_terms, device=device, dtype=dtype), False
+
+        adv = advantages.detach().to(device=device, dtype=dtype)
+        while adv.ndim > 2:
+            adv = adv.mean(dim=-1)
+        if adv.ndim == 1:
+            adv = adv[:, None]
+        if adv.shape[0] != batch_size:
+            adv = adv.reshape(batch_size, -1)
+        if adv.shape[1] == 1 and num_terms > 1:
+            adv = adv.expand(-1, num_terms)
+        elif adv.shape[1] != num_terms:
+            adv = adv.mean(dim=1, keepdim=True).expand(-1, num_terms)
+        adv = adv[:, :num_terms]
+
+        finite = torch.isfinite(adv)
+        if not bool(finite.any()):
+            return torch.zeros_like(adv), False
+        finite_values = adv[finite]
+        adv_mean = finite_values.mean()
+        adv_std = finite_values.std(unbiased=False).clamp_min(
+            float(getattr(self.config, "cr_reflow_eps", 1.0e-6))
+        )
+        adv = torch.where(finite, adv, adv_mean)
+        return (adv - adv_mean) / adv_std, True
+
+    def _cr_weights_from_advantages(self, advantages, used_advantages):
+        if not used_advantages:
+            return torch.ones_like(advantages), 0.0, 1.0
+
+        flat_adv = advantages.float().reshape(-1)
+        num_weights = int(flat_adv.numel())
+        if num_weights == 0:
+            return torch.ones_like(advantages), 0.0, 0.0
+        if float(flat_adv.std(unbiased=False).detach().cpu().item()) <= 1.0e-8:
+            return torch.ones_like(advantages), 0.0, 1.0
+
+        epsilon = max(float(getattr(self.config, "cr_reflow_kl_epsilon", 0.05)), 0.0)
+        eta_min = max(float(getattr(self.config, "cr_reflow_eta_min", 0.01)), 1.0e-8)
+        eta_max = max(float(getattr(self.config, "cr_reflow_eta_max", 10.0)), eta_min)
+
+        def kl_for_eta(eta: float) -> torch.Tensor:
+            probs = torch.softmax(flat_adv / eta, dim=0)
+            return (probs * (torch.log(probs.clamp_min(1.0e-12)) + math.log(num_weights))).sum()
+
+        if epsilon == 0.0:
+            eta = eta_max
+        elif float(kl_for_eta(eta_max).detach().cpu().item()) > epsilon:
+            eta = eta_max
+        elif float(kl_for_eta(eta_min).detach().cpu().item()) <= epsilon:
+            eta = eta_min
+        else:
+            lo = eta_min
+            hi = eta_max
+            for _ in range(32):
+                mid = 0.5 * (lo + hi)
+                if float(kl_for_eta(mid).detach().cpu().item()) > epsilon:
+                    lo = mid
+                else:
+                    hi = mid
+            eta = hi
+
+        probs = torch.softmax(flat_adv / eta, dim=0)
+        weights = (probs * float(num_weights)).reshape_as(advantages)
+        clip_value = float(getattr(self.config, "cr_reflow_weight_clip", 10.0))
+        if clip_value > 0.0:
+            weights = weights.clamp(max=clip_value)
+        weights = weights / weights.mean().clamp_min(1.0e-12)
+
+        flat_weights = weights.float().reshape(-1)
+        ess = flat_weights.sum().pow(2) / flat_weights.pow(2).sum().clamp_min(1.0e-12)
+        ess_fraction = float((ess / max(num_weights, 1)).detach().cpu().item())
+        return weights.to(dtype=advantages.dtype), float(eta), ess_fraction
+
+    def _compute_cr_reflow_loss(
+        self,
+        chains,
+        denoise_inds,
+        transition_means,
+        transition_stds,
+        old_means,
+        old_stds,
+        advantages,
+        values,
+    ):
+        if not self._cr_reflow_enabled():
+            return self._cr_zero_outputs(chains.device)
+        if transition_means is None or transition_stds is None:
+            return self._cr_zero_outputs(chains.device)
+
+        mode = str(getattr(self.config, "cr_reflow_mode", "none"))
+        device = transition_means.device
+        dtype = transition_means.dtype
+        num_terms = int(transition_means.shape[1])
+        denoise_inds = denoise_inds.to(device=device)
+        next_inds = (denoise_inds[:, :num_terms] + 1).clamp(max=chains.shape[1] - 1)
+        batch_indices = torch.arange(chains.shape[0], device=device)
+        targets = []
+        for idx in range(num_terms):
+            targets.append(chains[batch_indices, next_inds[:, idx]].detach())
+        targets = torch.stack(targets, dim=1).to(device=device, dtype=dtype)
+
+        selected_old_means = self._cr_selected_transition_stats(
+            old_means,
+            denoise_inds,
+            num_terms,
+            dtype,
+            device,
+        )
+        selected_old_stds = self._cr_selected_transition_stats(
+            old_stds,
+            denoise_inds,
+            num_terms,
+            dtype,
+            device,
+        )
+        if selected_old_stds is None:
+            selected_old_stds = transition_stds.detach()
+        scale = self._tr_action_slice(selected_old_stds).clamp_min(
+            float(getattr(self.config, "cr_reflow_eps", 1.0e-6))
+        )
+
+        action_means = self._tr_action_slice(transition_means)
+        action_targets = self._tr_action_slice(targets)
+        reflow_terms = ((action_means - action_targets) / scale).float().pow(2)
+        reflow_terms = reflow_terms.reshape(reflow_terms.shape[0], num_terms, -1).mean(dim=2)
+
+        normalized_adv, used_advantages = self._cr_prepare_advantages(
+            advantages,
+            values,
+            num_terms,
+            device,
+            dtype,
+        )
+        weights, eta, ess_fraction = self._cr_weights_from_advantages(
+            normalized_adv,
+            used_advantages,
+        )
+        weighted_reflow = (weights.float() * reflow_terms).sum() / weights.float().sum().clamp_min(1.0e-12)
+
+        anchor_loss = torch.zeros((), device=device, dtype=weighted_reflow.dtype)
+        anchor_beta = float(getattr(self.config, "cr_reflow_anchor_beta", 0.1))
+        if mode == "cr_reflow" and anchor_beta > 0.0 and selected_old_means is not None:
+            action_old_means = self._tr_action_slice(selected_old_means)
+            anchor_terms = ((action_means - action_old_means) / scale).float().pow(2)
+            anchor_terms = anchor_terms.reshape(anchor_terms.shape[0], num_terms, -1).mean(dim=2)
+            anchor_loss = (weights.float() * anchor_terms).sum() / weights.float().sum().clamp_min(1.0e-12)
+
+        loss = weighted_reflow + anchor_beta * anchor_loss
+        diag = {
+            "cr_reflow_mode": mode,
+            "cr_reflow_loss": float(weighted_reflow.detach().cpu().item()),
+            "cr_reflow_anchor_loss": float(anchor_loss.detach().cpu().item()),
+            "cr_reflow_eta": eta,
+            "cr_reflow_weight_mean": float(weights.detach().float().mean().cpu().item()),
+            "cr_reflow_weight_max": float(weights.detach().float().max().cpu().item()),
+            "cr_reflow_weight_ess": ess_fraction,
+            "cr_reflow_used_advantages": used_advantages,
+        }
+        return loss, diag
+
     def preprocess_for_train(self, data):
         return data
 
@@ -1891,13 +2129,15 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         old_means=None,
     ):
         bsize = state.shape[0]
-        batch_indices = torch.arange(bsize)
+        batch_indices = torch.arange(bsize, device=chains.device)
         prefix_output, prefix_pad_masks, past_key_values = self._build_prefix_cache(
             images, img_masks, lang_tokens, lang_masks
         )
         chains_log_probs = []
         chains_values = []
         chains_entropy = []
+        transition_means = []
+        transition_stds = []
 
         # get log prob
         if self.config.joint_logprob:
@@ -1930,6 +2170,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             entropy = self.gaussian_entropy(x_t_std)
             chains_log_probs.append(log_probs)
             chains_entropy.append(entropy)
+            transition_means.append(x_t_mean)
+            transition_stds.append(x_t_std)
             if not self.use_vlm_value:
                 chains_values.append(value_t)
         if self.use_vlm_value:
@@ -1942,6 +2184,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             chains_entropy = torch.stack(chains_entropy, dim=1)
         else:
             chains_entropy = torch.zeros_like(chains_log_probs)
+        transition_means = torch.stack(transition_means, dim=1)
+        transition_stds = torch.stack(transition_stds, dim=1)
         terminal_pullback_loss, tr_diag = self._compute_tr_penalty(
             chains,
             denoise_inds,
@@ -1957,6 +2201,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             chains_entropy,
             terminal_pullback_loss,
             tr_diag,
+            transition_means,
+            transition_stds,
         )
 
     def get_value_from_vlm(self, prefix_output):

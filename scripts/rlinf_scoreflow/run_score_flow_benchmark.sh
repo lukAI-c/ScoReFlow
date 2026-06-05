@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Minimal RLinf/OpenPI runner for original Score-Flow.
-# It compares the matched flow-noise baseline against learned-alpha Score-Flow
-# on the pi_RL benchmark families supported by RLinf/OpenPI.
+# RLinf/OpenPI runner for Score-Flow, terminal trust-region, and CR-Reflow.
+# Set METHODS to choose arms. Supported methods:
+# flow_noise_baseline, scoreflow_original, tr_scalar_l2, tr_pullback,
+# tr_pullback_matched, cr_reflow_no_anchor, cr_reflow.
 
 RLINF_ROOT="${RLINF_ROOT:-/path/to/RLinf}"
 SCOREFLOW_ROOT="${SCOREFLOW_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -96,10 +97,25 @@ model_dir_for_suite() {
 method_overrides() {
   case "$1" in
     flow_noise_baseline)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=none"
       ;;
     scoreflow_original)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=learned_alpha ++actor.model.openpi.score_flow_scale=1.0 ++actor.model.openpi.score_flow_clip_norm=10.0 ++actor.model.openpi.score_flow_alpha_hidden_dim=16 ++actor.model.openpi.score_flow_alpha_init_bias=-2.0 ++actor.model.openpi.score_flow_alpha_max=2.0 ++actor.model.openpi.score_flow_use_time_mask=true"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=learned_alpha ++actor.model.openpi.score_flow_scale=1.0 ++actor.model.openpi.score_flow_clip_norm=10.0 ++actor.model.openpi.score_flow_alpha_hidden_dim=16 ++actor.model.openpi.score_flow_alpha_init_bias=-2.0 ++actor.model.openpi.score_flow_alpha_max=2.0 ++actor.model.openpi.score_flow_use_time_mask=true ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=none"
+      ;;
+    tr_scalar_l2)
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=scalar_l2 ++actor.model.openpi.tr_penalty_beta=1.0 ++actor.model.openpi.cr_reflow_mode=none"
+      ;;
+    tr_pullback)
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=terminal_pullback ++actor.model.openpi.tr_penalty_beta=1.0 ++actor.model.openpi.cr_reflow_mode=none"
+      ;;
+    tr_pullback_matched)
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=terminal_pullback ++actor.model.openpi.tr_penalty_beta=0.03 ++actor.model.openpi.cr_reflow_mode=none"
+      ;;
+    cr_reflow_no_anchor)
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow_no_anchor ++actor.model.openpi.cr_reflow_kl_epsilon=0.05 ++actor.model.openpi.cr_reflow_eta_min=0.01 ++actor.model.openpi.cr_reflow_eta_max=10.0 ++actor.model.openpi.cr_reflow_weight_clip=10.0 ++actor.model.openpi.cr_reflow_anchor_beta=0.0"
+      ;;
+    cr_reflow)
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow ++actor.model.openpi.cr_reflow_kl_epsilon=0.05 ++actor.model.openpi.cr_reflow_eta_min=0.01 ++actor.model.openpi.cr_reflow_eta_max=10.0 ++actor.model.openpi.cr_reflow_weight_clip=10.0 ++actor.model.openpi.cr_reflow_anchor_beta=0.1"
       ;;
     *)
       echo "Unsupported method: $1" >&2
