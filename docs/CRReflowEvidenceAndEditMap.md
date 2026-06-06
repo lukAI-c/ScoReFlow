@@ -275,5 +275,78 @@ patched=False would_patch=False check=False .../fsdp_actor_worker.py
 [Fri Jun  5 14:03:44 UTC 2026] START libero_spatial_flow_noise_baseline_seed42
 ```
 
-The H100 notebook is intentionally left running while this approved comparison
-job is active.
+At launch time, the H100 notebook was intentionally left running while this
+approved comparison job was active.
+
+## Round 4 Real Comparison Completion
+
+The detached launcher exited after all planned real pi0.5 LIBERO Spatial runs
+completed. Terminal verification against:
+
+```text
+/inspire/ssd/project/inference-chip/qiuxiaotian-253114010249/RLinf/logs/cr_reflow_round3_comparison_20260605_140344
+```
+
+showed:
+
+```text
+run_manifest.csv lines including header: 13
+planned terminal rows: 12
+status=done and exit_code=0 rows: 12
+command.txt files: 12
+run.log files: 12
+TensorBoard event files: 12
+launcher PID 3056367 alive: no
+```
+
+The completed method/seed matrix is:
+
+```text
+flow_noise_baseline: 42, 43, 44
+tr_scalar_l2: 42, 43, 44
+cr_reflow_no_anchor: 42, 43, 44
+cr_reflow: 42, 43, 44
+```
+
+The collector ran only after terminal verification and wrote:
+
+```text
+$EXP_ROOT/collected/scoreflow_benchmark_summary.csv
+$EXP_ROOT/collected/scoreflow_benchmark_raw_scalars.csv
+$EXP_ROOT/collected/scoreflow_benchmark_manifest.csv
+```
+
+Measured final aggregates:
+
+| method | seeds | final success mean | final success std | terminal collapse rate | approx_kl mean | approx_kl std |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `flow_noise_baseline` | 3 | 0.500000 | 0.330719 | 0.333333 | 0.013045 | 0.007135 |
+| `tr_scalar_l2` | 3 | 0.333333 | 0.381881 | 0.333333 | 0.013046 | 0.010650 |
+| `cr_reflow_no_anchor` | 3 | 0.250000 | 0.000000 | 0.000000 | 0.009678 | 0.001252 |
+| `cr_reflow` | 3 | 0.375000 | 0.216506 | 0.000000 | 0.005289 | 0.008758 |
+
+Measured CR diagnostic aggregates:
+
+| method | eta mean | ESS mean | valid fraction mean | chain-KL proxy mean | chain displacement mean |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `cr_reflow_no_anchor` | 2.841646 | 0.910189 | 0.690972 | 0.500538 | 5.855503 |
+| `cr_reflow` | 2.533030 | 0.905094 | 0.692708 | 0.489130 | 5.753311 |
+
+Measured comparison against `tr_scalar_l2`:
+
+- `cr_reflow` final success mean is higher by `0.041667` (`0.375000` versus
+  `0.333333`).
+- `cr_reflow` mean approx_kl is `0.405446` times the `tr_scalar_l2` value
+  (`0.005289` versus `0.013046`).
+- `cr_reflow` terminal collapse rate is lower by `0.333333` (`0.000000`
+  versus `0.333333`).
+
+Interpretation: this 3-seed comparison gives a directional result in favor of
+full CR-Reflow over `tr_scalar_l2` at a lower measured KL/collapse budget, but
+the small sample and high seed variance do not support a statistical
+significance or definitive superiority claim. `flow_noise_baseline` retains
+the highest measured final success mean in this comparison.
+
+After verifying that no training or GPU compute process remained, the H100
+notebook `scoreflow-h100b-0603` was stopped. Live Inspire status returned
+`STOPPED`.
