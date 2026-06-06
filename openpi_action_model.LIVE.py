@@ -1923,6 +1923,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_mean": 0.0,
             "cr_reflow_weight_max": 0.0,
             "cr_reflow_weight_ess": 0.0,
+            "cr_reflow_weight_kl": 0.0,
+            "cr_reflow_eta_at_bound": 0.0,
             "cr_reflow_valid_fraction": 0.0,
             "cr_reflow_target_displacement": 0.0,
             "cr_reflow_policy_kl_proxy": 0.0,
@@ -2025,15 +2027,15 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         valid = mask > 0
         num_valid = int(valid.sum().detach().cpu().item())
         if num_valid == 0:
-            return torch.zeros_like(advantages), 0.0, 0.0
+            return torch.zeros_like(advantages), 0.0, 0.0, 0.0, 0.0
 
         if not used_advantages:
-            return mask, 0.0, 1.0
+            return mask, 0.0, 1.0, 0.0, 0.0
 
         flat_adv = advantages.float()[valid]
         num_weights = int(flat_adv.numel())
         if float(flat_adv.std(unbiased=False).detach().cpu().item()) <= 1.0e-8:
-            return mask, 0.0, 1.0
+            return mask, 0.0, 1.0, 0.0, 0.0
 
         epsilon = max(float(getattr(self.config, "cr_reflow_kl_epsilon", 0.05)), 0.0)
         eta_min = max(float(getattr(self.config, "cr_reflow_eta_min", 0.01)), 1.0e-8)
@@ -2043,12 +2045,19 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             probs = torch.softmax(flat_adv / eta, dim=0)
             return (probs * (torch.log(probs.clamp_min(1.0e-12)) + math.log(num_weights))).sum()
 
-        if epsilon == 0.0:
+        use_uniform_fallback = epsilon == 0.0
+        if not use_uniform_fallback:
+            use_uniform_fallback = (
+                float(kl_for_eta(eta_max).detach().cpu().item()) > epsilon
+            )
+
+        eta_at_bound = 0.0
+        if use_uniform_fallback:
             eta = eta_max
-        elif float(kl_for_eta(eta_max).detach().cpu().item()) > epsilon:
-            eta = eta_max
+            eta_at_bound = 1.0
         elif float(kl_for_eta(eta_min).detach().cpu().item()) <= epsilon:
             eta = eta_min
+            eta_at_bound = 1.0
         else:
             lo = eta_min
             hi = eta_max
@@ -2060,9 +2069,12 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
                     hi = mid
             eta = hi
 
-        probs = torch.softmax(flat_adv / eta, dim=0)
-        weights = torch.zeros_like(advantages, dtype=probs.dtype)
-        weights[valid] = probs * float(num_weights)
+        weights = torch.zeros_like(advantages, dtype=flat_adv.dtype)
+        if use_uniform_fallback:
+            weights[valid] = 1.0
+        else:
+            probs = torch.softmax(flat_adv / eta, dim=0)
+            weights[valid] = probs * float(num_weights)
         clip_value = float(getattr(self.config, "cr_reflow_weight_clip", 10.0))
         if clip_value > 0.0:
             weights = weights.clamp(max=clip_value)
@@ -2070,9 +2082,29 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         weights = torch.where(valid, weights / valid_mean, torch.zeros_like(weights))
 
         flat_weights = weights.float()[valid]
+        final_probs = flat_weights / flat_weights.sum().clamp_min(1.0e-12)
+        weight_kl = (
+            final_probs
+            * (torch.log(final_probs.clamp_min(1.0e-12)) + math.log(num_weights))
+        ).sum()
+        if float(weight_kl.detach().cpu().item()) > epsilon + 1.0e-6:
+            weights = mask
+            flat_weights = weights.float()[valid]
+            final_probs = flat_weights / flat_weights.sum().clamp_min(1.0e-12)
+            weight_kl = (
+                final_probs
+                * (torch.log(final_probs.clamp_min(1.0e-12)) + math.log(num_weights))
+            ).sum()
+            eta_at_bound = 1.0
         ess = flat_weights.sum().pow(2) / flat_weights.pow(2).sum().clamp_min(1.0e-12)
         ess_fraction = float((ess / max(num_weights, 1)).detach().cpu().item())
-        return weights.to(dtype=advantages.dtype), float(eta), ess_fraction
+        return (
+            weights.to(dtype=advantages.dtype),
+            float(eta),
+            ess_fraction,
+            float(weight_kl.detach().cpu().item()),
+            eta_at_bound,
+        )
 
     def _compute_cr_reflow_loss(
         self,
@@ -2142,10 +2174,12 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             dtype,
             valid_mask,
         )
-        weights, eta, ess_fraction = self._cr_weights_from_advantages(
-            normalized_adv,
-            used_advantages,
-            valid_mask,
+        weights, eta, ess_fraction, weight_kl, eta_at_bound = (
+            self._cr_weights_from_advantages(
+                normalized_adv,
+                used_advantages,
+                valid_mask,
+            )
         )
         weight_sum = weights.float().sum().clamp_min(1.0e-12)
         weighted_reflow = (weights.float() * reflow_terms).sum() / weight_sum
@@ -2191,6 +2225,8 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_mean": float(weights.detach().float().mean().cpu().item()),
             "cr_reflow_weight_max": float(weights.detach().float().max().cpu().item()),
             "cr_reflow_weight_ess": ess_fraction,
+            "cr_reflow_weight_kl": weight_kl,
+            "cr_reflow_eta_at_bound": eta_at_bound,
             "cr_reflow_valid_fraction": valid_fraction,
             "cr_reflow_target_displacement": float(
                 target_displacement.detach().cpu().item()

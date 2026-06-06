@@ -153,6 +153,14 @@ def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, MetricTagSelection]
             ("cr", "reflow", "ess"),
             ("actor/cr_reflow_weight_ess",),
         ),
+        "final_cr_reflow_weight_kl": (
+            ("cr", "reflow", "weight", "kl"),
+            ("actor/cr_reflow_weight_kl",),
+        ),
+        "final_cr_reflow_eta_at_bound": (
+            ("cr", "reflow", "eta", "bound"),
+            ("actor/cr_reflow_eta_at_bound",),
+        ),
         "final_cr_reflow_weight_max": (
             ("cr", "reflow", "weight", "max"),
             ("actor/cr_reflow_weight_max",),

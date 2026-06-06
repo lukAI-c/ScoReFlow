@@ -427,3 +427,44 @@ $EXP_ROOT/collected/scoreflow_benchmark_manifest.csv
 
 After readiness and collection completed, live Inspire status confirmed H100
 notebook `scoreflow-h100b-0603` was `STOPPED`.
+
+## Round 6 Constraint-Preserving E-Step
+
+The bounded eta solve now uses an explicit uniform valid-entry fallback when
+`epsilon=0` or when `KL(eta_max)` still exceeds epsilon. It also recomputes the
+achieved reward-weight KL after clipping and renormalization, with a final
+uniform fallback if the actual returned weights exceed the configured bound.
+
+New diagnostics:
+
+- `cr_reflow_weight_kl`: achieved KL of the final returned reward weights
+  against the uniform old-sample distribution.
+- `cr_reflow_eta_at_bound`: numeric flag for an eta-bound selection or explicit
+  uniform fallback.
+
+Focused regression tests cover zero epsilon, infeasible `eta_max`, normal
+bisection, constant advantages, masking, and post-clipping KL:
+
+```text
+python3 -m unittest tests.test_cr_reflow_weights -v
+Ran 6 tests
+OK
+```
+
+One real pi0.5 LIBERO Spatial full-CR readiness row was completed and collected:
+
+```text
+Readiness EXP_ROOT: $R/RLinf/logs/cr_reflow_round6_estep_readiness_20260606_070103
+status: done
+exit_code: 0
+configured epsilon: 0.05
+final cr_reflow_weight_kl: 0.04270836
+final cr_reflow_eta_at_bound: 0.0
+tag source for both diagnostics: preferred
+```
+
+This real row verifies that the normal bounded solve emits auditable exact tags
+and returned a final reward-weight KL below the configured epsilon. The
+constraint-preserving zero/infeasible fallback behavior is verified by the
+focused regression tests rather than reported as method-performance evidence.
+After collection, the H100 notebook was stopped.
