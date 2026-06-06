@@ -468,3 +468,43 @@ and returned a final reward-weight KL below the configured epsilon. The
 constraint-preserving zero/infeasible fallback behavior is verified by the
 focused regression tests rather than reported as method-performance evidence.
 After collection, the H100 notebook was stopped.
+
+## Round 7 Exact Returned-Weight KL Enforcement
+
+The E-step now keeps reward-weight coefficients in float32 through the return
+path. Final probabilities, KL, and ESS are computed from that exact returned
+tensor, and any final KL strictly above epsilon triggers a uniform valid-entry
+fallback followed by exact diagnostic recomputation. This closes the
+mixed-precision gap where fp16 or bf16 rounding could previously move returned
+weights above the configured bound after the last check.
+
+Deterministic fp16 and bf16 regressions verify that the reported KL exactly
+equals KL recomputed from the returned float32 weights and remains at or below
+epsilon:
+
+```text
+python3 -m unittest discover -s tests -v
+Ran 8 tests
+OK
+```
+
+The corrected policy was deployed and compiled on the H100. One clean real
+pi0.5 LIBERO Spatial full-CR readiness row completed and was collected:
+
+```text
+Readiness EXP_ROOT: $R/RLinf/logs/cr_reflow_round7_exact_weight_readiness_20260606_clean
+status: done
+exit_code: 0
+configured epsilon: 0.05
+final cr_reflow_weight_kl: 0.016666650772094727
+final cr_reflow_eta_at_bound: 0.5208333134651184
+tag source for both diagnostics: preferred
+```
+
+The clean run also recorded `eval/success_at_end=1.0` and completed checkpoint
+saving. Two earlier Round 7 attempts are excluded from method evidence: one
+used an incorrect LIBERO `PYTHONPATH`, and one was abandoned after a stale Ray
+launch blocked rollout progress.
+
+After collection, live Inspire status confirmed H100 notebook
+`scoreflow-h100b-0603` was `STOPPED`.

@@ -77,7 +77,7 @@ class CRReflowWeightsTest(unittest.TestCase):
         )
         self.assertGreater(eta, policy.config.cr_reflow_eta_min)
         self.assertLess(eta, policy.config.cr_reflow_eta_max)
-        self.assertLessEqual(weight_kl, policy.config.cr_reflow_kl_epsilon + 1.0e-6)
+        self.assertLessEqual(weight_kl, policy.config.cr_reflow_kl_epsilon)
         self.assertFalse(torch.allclose(weights, self.mask))
         self.assertEqual(eta_at_bound, 0.0)
 
@@ -116,6 +116,28 @@ class CRReflowWeightsTest(unittest.TestCase):
         self.assertAlmostEqual(weight_kl, achieved_kl(weights, self.mask), places=6)
         self.assertNotAlmostEqual(weight_kl, preclip_kl, places=4)
         self.assertEqual(eta_at_bound, 1.0)
+
+    def test_fp16_input_returns_exact_bounded_float32_weights(self):
+        advantages = torch.tensor([[-1.0, 0.0, 1.0]], dtype=torch.float16)
+        mask = torch.ones_like(advantages)
+        weights, _, _, weight_kl, _ = DummyPolicy().weights_from_advantages(
+            advantages, True, mask
+        )
+        returned_kl = achieved_kl(weights, mask)
+        self.assertEqual(weights.dtype, torch.float32)
+        self.assertEqual(weight_kl, returned_kl)
+        self.assertLessEqual(returned_kl, 0.05)
+
+    def test_bf16_input_returns_exact_bounded_float32_weights(self):
+        advantages = torch.tensor([[-2.0, -1.0, 0.0, 1.0, 2.0]], dtype=torch.bfloat16)
+        mask = torch.ones_like(advantages)
+        weights, _, _, weight_kl, _ = DummyPolicy().weights_from_advantages(
+            advantages, True, mask
+        )
+        returned_kl = achieved_kl(weights, mask)
+        self.assertEqual(weights.dtype, torch.float32)
+        self.assertEqual(weight_kl, returned_kl)
+        self.assertLessEqual(returned_kl, 0.05)
 
 
 if __name__ == "__main__":

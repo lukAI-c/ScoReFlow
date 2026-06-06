@@ -2023,11 +2023,11 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         return adv, True
 
     def _cr_weights_from_advantages(self, advantages, used_advantages, mask):
-        mask = mask.to(device=advantages.device, dtype=advantages.dtype)
+        mask = mask.to(device=advantages.device, dtype=torch.float32)
         valid = mask > 0
         num_valid = int(valid.sum().detach().cpu().item())
         if num_valid == 0:
-            return torch.zeros_like(advantages), 0.0, 0.0, 0.0, 0.0
+            return torch.zeros_like(advantages, dtype=torch.float32), 0.0, 0.0, 0.0, 0.0
 
         if not used_advantages:
             return mask, 0.0, 1.0, 0.0, 0.0
@@ -2087,9 +2087,9 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             final_probs
             * (torch.log(final_probs.clamp_min(1.0e-12)) + math.log(num_weights))
         ).sum()
-        if float(weight_kl.detach().cpu().item()) > epsilon + 1.0e-6:
+        if float(weight_kl.detach().cpu().item()) > epsilon:
             weights = mask
-            flat_weights = weights.float()[valid]
+            flat_weights = weights[valid]
             final_probs = flat_weights / flat_weights.sum().clamp_min(1.0e-12)
             weight_kl = (
                 final_probs
@@ -2099,7 +2099,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         ess = flat_weights.sum().pow(2) / flat_weights.pow(2).sum().clamp_min(1.0e-12)
         ess_fraction = float((ess / max(num_weights, 1)).detach().cpu().item())
         return (
-            weights.to(dtype=advantages.dtype),
+            weights,
             float(eta),
             ess_fraction,
             float(weight_kl.detach().cpu().item()),
