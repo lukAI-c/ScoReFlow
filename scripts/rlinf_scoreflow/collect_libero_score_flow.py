@@ -213,7 +213,12 @@ def summarize(
     rows: list[dict[str, Any]] = []
     metric_tags = selected_metric_tags(scalars)
     if scalars.empty:
-        return manifest.copy()
+        summary = manifest.copy()
+        if "status" in summary:
+            summary["status"] = summary["status"].fillna("unknown").astype(str)
+        elif not summary.empty:
+            summary["status"] = "unknown"
+        return summary
 
     for run_name, group in scalars.groupby("run_name"):
         suite, method, seed = split_run_name(str(run_name))
@@ -234,13 +239,13 @@ def summarize(
     summary = pd.DataFrame(rows)
     if not manifest.empty:
         summary = manifest.merge(summary, on=["suite", "method", "seed", "run_name"], how="outer")
+    if "status" in summary:
+        summary["status"] = summary["status"].fillna("unknown").astype(str)
+    else:
+        summary["status"] = "unknown"
 
     agg_rows: list[dict[str, Any]] = []
-    if "status" in summary:
-        status = summary["status"].fillna("done")
-    else:
-        status = pd.Series("done", index=summary.index)
-    complete = summary[status == "done"]
+    complete = summary[summary["status"] == "done"]
     for (suite, method), group in complete.groupby(["suite", "method"]):
         seed_count = group["seed"].astype(str).nunique()
         row = {"suite": suite, "method": method, "num_seeds": seed_count, "main_table": seed_count >= min_seeds}

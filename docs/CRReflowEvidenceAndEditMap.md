@@ -183,8 +183,9 @@ Round 3 fixed three launch blockers before the live check:
   unexpected remote target aborts and writes a `.unexpected_scoreflow_target.diff`
   evidence file.
 - `collect_libero_score_flow.py` now prefers exact CR scalar tags, including the
-  remote TensorBoard `train/actor/...` prefix, and handles bounded-stop readiness
-  logs whose manifest has no completed `status` row.
+  remote TensorBoard `train/actor/...` prefix, and preserves bounded-stop
+  readiness logs whose manifest has no completed `status` row as nonterminal
+  per-run evidence.
 
 Remote deployment on the H100 notebook used:
 
@@ -508,3 +509,27 @@ launch blocked rollout progress.
 
 After collection, live Inspire status confirmed H100 notebook
 `scoreflow-h100b-0603` was `STOPPED`.
+
+## Collector Partial-Monitoring Semantics
+
+The collector no longer promotes missing manifest status or scalar-only rows to
+completed evidence. After the manifest/scalar outer merge, every missing status
+is explicitly recorded as `unknown`; method aggregates are built only from rows
+whose manifest status is explicitly `done`. Prepared, running, failed, unknown,
+and scalar-only rows remain visible in per-run output without inflating
+`num_seeds` or `main_table`.
+
+Focused regressions cover explicit `done`, `prepared`, `running`, and `failed`
+rows, a manifest row with missing status, a scalar-only row, and a manifest-only
+row with no scalars. In the mixed-status case, only the explicit terminal row
+contributes to aggregates:
+
+```text
+python3 -m unittest discover -s tests -v
+Ran 11 tests
+OK
+
+mixed terminal/scalar-only aggregate:
+num_seeds=1
+main_table=False with min_seeds=2
+```
