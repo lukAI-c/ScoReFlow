@@ -161,13 +161,17 @@ def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, MetricTagSelection]
             ("cr", "reflow", "valid", "fraction"),
             ("actor/cr_reflow_valid_fraction",),
         ),
-        "final_cr_reflow_chain_kl_proxy": (
-            ("cr", "reflow", "chain", "kl"),
-            ("actor/cr_reflow_chain_kl_proxy",),
+        "final_cr_reflow_target_displacement": (
+            ("cr", "reflow", "target", "displacement"),
+            ("actor/cr_reflow_target_displacement",),
         ),
-        "final_cr_reflow_chain_displacement": (
-            ("cr", "reflow", "chain", "displacement"),
-            ("actor/cr_reflow_chain_displacement",),
+        "final_cr_reflow_policy_kl_proxy": (
+            ("cr", "reflow", "policy", "kl"),
+            ("actor/cr_reflow_policy_kl_proxy",),
+        ),
+        "final_cr_reflow_policy_displacement": (
+            ("cr", "reflow", "policy", "displacement"),
+            ("actor/cr_reflow_policy_displacement",),
         ),
         "final_cr_reflow_mode_code": (
             ("cr", "reflow", "mode", "code"),

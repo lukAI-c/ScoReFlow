@@ -1924,8 +1924,9 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_max": 0.0,
             "cr_reflow_weight_ess": 0.0,
             "cr_reflow_valid_fraction": 0.0,
-            "cr_reflow_chain_kl_proxy": 0.0,
-            "cr_reflow_chain_displacement": 0.0,
+            "cr_reflow_target_displacement": 0.0,
+            "cr_reflow_policy_kl_proxy": 0.0,
+            "cr_reflow_policy_displacement": 0.0,
             "cr_reflow_used_advantages": False,
         }
 
@@ -2148,22 +2149,38 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         )
         weight_sum = weights.float().sum().clamp_min(1.0e-12)
         weighted_reflow = (weights.float() * reflow_terms).sum() / weight_sum
-        chain_kl_proxy = 0.5 * weighted_reflow
-        displacement_terms = ((action_means.detach() - action_targets.detach()) / scale).float()
-        displacement_terms = displacement_terms.reshape(
-            displacement_terms.shape[0],
+        target_displacement_terms = (
+            (action_means.detach() - action_targets.detach()) / scale
+        ).float()
+        target_displacement_terms = target_displacement_terms.reshape(
+            target_displacement_terms.shape[0],
             num_terms,
             -1,
         ).norm(dim=2)
-        chain_displacement = (weights.float() * displacement_terms).sum() / weight_sum
+        target_displacement = (
+            weights.float() * target_displacement_terms
+        ).sum() / weight_sum
 
         anchor_loss = torch.zeros((), device=device, dtype=weighted_reflow.dtype)
+        policy_kl_proxy = torch.zeros((), device=device, dtype=weighted_reflow.dtype)
+        policy_displacement = torch.zeros((), device=device, dtype=weighted_reflow.dtype)
         anchor_beta = float(getattr(self.config, "cr_reflow_anchor_beta", 0.1))
-        if mode == "cr_reflow" and anchor_beta > 0.0 and selected_old_means is not None:
+        if selected_old_means is not None:
             action_old_means = self._tr_action_slice(selected_old_means)
-            anchor_terms = ((action_means - action_old_means) / scale).float().pow(2)
-            anchor_terms = anchor_terms.reshape(anchor_terms.shape[0], num_terms, -1).mean(dim=2)
-            anchor_loss = (weights.float() * anchor_terms).sum() / weight_sum
+            policy_delta = ((action_means - action_old_means) / scale).float()
+            policy_delta = policy_delta.reshape(policy_delta.shape[0], num_terms, -1)
+            policy_mean_shift_terms = policy_delta.pow(2).mean(dim=2)
+            policy_kl_proxy = (
+                0.5 * (weights.float() * policy_mean_shift_terms).sum() / weight_sum
+            )
+            policy_displacement_terms = policy_delta.detach().norm(dim=2)
+            policy_displacement = (
+                weights.float() * policy_displacement_terms
+            ).sum() / weight_sum
+            if mode == "cr_reflow" and anchor_beta > 0.0:
+                anchor_loss = (
+                    weights.float() * policy_mean_shift_terms
+                ).sum() / weight_sum
 
         loss = weighted_reflow + anchor_beta * anchor_loss
         diag = {
@@ -2175,8 +2192,13 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_max": float(weights.detach().float().max().cpu().item()),
             "cr_reflow_weight_ess": ess_fraction,
             "cr_reflow_valid_fraction": valid_fraction,
-            "cr_reflow_chain_kl_proxy": float(chain_kl_proxy.detach().cpu().item()),
-            "cr_reflow_chain_displacement": float(chain_displacement.detach().cpu().item()),
+            "cr_reflow_target_displacement": float(
+                target_displacement.detach().cpu().item()
+            ),
+            "cr_reflow_policy_kl_proxy": float(policy_kl_proxy.detach().cpu().item()),
+            "cr_reflow_policy_displacement": float(
+                policy_displacement.detach().cpu().item()
+            ),
             "cr_reflow_used_advantages": used_advantages,
         }
         return loss, diag

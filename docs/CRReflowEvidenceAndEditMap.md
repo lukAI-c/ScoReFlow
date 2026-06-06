@@ -233,7 +233,7 @@ $EXP_ROOT/collected/scoreflow_benchmark_manifest.csv
 
 Readiness scalar summary:
 
-| method | seed | approx_kl | cr_loss | actor_loss | anchor_loss | eta | ESS | valid_fraction | chain_kl_proxy | chain_displacement | mode_code |
+| method | seed | approx_kl | cr_loss | actor_loss | anchor_loss | eta | ESS | valid_fraction | legacy target MSE proxy | legacy target displacement | mode_code |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `cr_reflow_no_anchor` | 42 | 0.004954 | 0.988706 | 0.988706 | 0.000000 | 3.088232 | 0.909466 | 1.000000 | 0.494353 | 5.840227 | 1.0 |
 | `cr_reflow` | 42 | 0.026305 | 0.999127 | 0.999257 | 0.001298 | 2.888686 | 0.895039 | 0.723958 | 0.499564 | 5.813925 | 2.0 |
@@ -242,6 +242,12 @@ The selected CR tags were exact preferred matches against remote TensorBoard
 tags such as `train/actor/cr_reflow_loss`,
 `train/actor/cr_reflow_actor_loss`, and
 `train/actor/cr_reflow_mode_code`.
+
+Round 5 review established that the two legacy columns above were computed from
+the new transition means versus sampled teacher-forcing targets. They are
+reflow-target residuals, not new-vs-old policy movement. The measured values are
+retained as historical readiness evidence, but must not be interpreted as a
+chain KL or policy displacement.
 
 This is launch-readiness and diagnostic evidence only. It is not a completed
 method-performance comparison because both readiness jobs were intentionally
@@ -325,12 +331,18 @@ Measured final aggregates:
 | `cr_reflow_no_anchor` | 3 | 0.250000 | 0.000000 | 0.000000 | 0.009678 | 0.001252 |
 | `cr_reflow` | 3 | 0.375000 | 0.216506 | 0.000000 | 0.005289 | 0.008758 |
 
-Measured CR diagnostic aggregates:
+Measured legacy CR target-residual aggregates:
 
-| method | eta mean | ESS mean | valid fraction mean | chain-KL proxy mean | chain displacement mean |
+| method | eta mean | ESS mean | valid fraction mean | legacy target MSE proxy mean | legacy target displacement mean |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `cr_reflow_no_anchor` | 2.841646 | 0.910189 | 0.690972 | 0.500538 | 5.855503 |
 | `cr_reflow` | 2.533030 | 0.905094 | 0.692708 | 0.489130 | 5.753311 |
+
+The last two columns were originally logged under `chain_*` names. Round 5
+review found that they compare new transition means to sampled targets rather
+than old transition means. They remain valid measured target-residual values,
+but are not policy-change evidence and do not support a conservative-policy
+movement claim.
 
 Measured comparison against `tr_scalar_l2`:
 
@@ -350,3 +362,68 @@ the highest measured final success mean in this comparison.
 After verifying that no training or GPU compute process remained, the H100
 notebook `scoreflow-h100b-0603` was stopped. Live Inspire status returned
 `STOPPED`.
+
+## Round 5 Policy Diagnostics and FSDP Code Map
+
+The policy diagnostics were corrected to separate teacher-forced fit from
+new-vs-old policy movement:
+
+- `cr_reflow_target_displacement` retains the new-mean-to-target residual.
+- `cr_reflow_policy_displacement` is the weighted normalized norm between new
+  and selected old transition means.
+- `cr_reflow_policy_kl_proxy` is the weighted fixed-variance Gaussian
+  mean-shift proxy, using selected old standard deviations.
+
+The remote FSDP model manager was inspected at:
+
+```text
+$R/RLinf/rlinf/hybrid_engines/fsdp/fsdp_model_manager.py
+```
+
+The exact coverage path is:
+
+1. `setup_model_and_optimizer()` creates the policy module and passes it through
+   `self._strategy.wrap_model(model=module, device_mesh=self._device_mesh)`.
+2. The wrapped `self.model` is passed into `build_optimizer(...)`.
+3. `build_optimizer(...)` iterates `model.named_parameters()`, routes every
+   trainable tensor into actor, critic, or score-flow parameter groups, and
+   constructs `torch.optim.AdamW`.
+
+CR-Reflow changes the loss over existing policy outputs and adds no standalone
+trainable module or parameter. Its gradients therefore use the existing
+FSDP-wrapped policy and actor optimizer group; no CR-specific optimizer or FSDP
+registration is required.
+
+The corrected policy and collector were deployed and compiled on the H100, then
+verified with two completed real pi0.5 LIBERO Spatial one-epoch runs:
+
+```text
+Readiness EXP_ROOT: $R/RLinf/logs/cr_reflow_round5_policy_diag_readiness_20260606_062830
+manifest terminal rows: 2
+status=done and exit_code=0 rows: 2
+```
+
+The collector selected all corrected metrics from exact preferred
+`train/actor/...` TensorBoard tags:
+
+| method | target displacement | policy KL proxy | policy displacement | anchor loss | exact-tag source |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `cr_reflow_no_anchor` | 5.863093 | 0.000635 | 0.175418 | 0.000000 | preferred |
+| `cr_reflow` | 5.735723 | 0.000873 | 0.209690 | 0.001746 | preferred |
+
+For full CR-Reflow, the observed `anchor_loss=0.001746008` equals twice the
+observed `policy_kl_proxy=0.000873004`, as expected because the anchor is the
+weighted normalized mean-shift squared and the Gaussian proxy applies the
+`0.5` factor. The much smaller policy-change values are also clearly distinct
+from the teacher-forced target displacement.
+
+Collector artifacts:
+
+```text
+$EXP_ROOT/collected/scoreflow_benchmark_summary.csv
+$EXP_ROOT/collected/scoreflow_benchmark_raw_scalars.csv
+$EXP_ROOT/collected/scoreflow_benchmark_manifest.csv
+```
+
+After readiness and collection completed, live Inspire status confirmed H100
+notebook `scoreflow-h100b-0603` was `STOPPED`.
