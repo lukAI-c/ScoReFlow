@@ -145,6 +145,16 @@ class CollectorStatusTest(unittest.TestCase):
         self.assertFalse(summary["main_table"].any())
         self.assertTrue((summary["final_success_mean"] == 1.0).all())
 
+    def test_training_scalars_are_never_official_comparison_evidence(self) -> None:
+        run_name = "libero_spatial_cr_reflow_seed42"
+        manifest = pd.DataFrame([manifest_row(run_name, "42", "done")])
+        scalars = pd.DataFrame([scalar_row(run_name, "42", 1.0)])
+
+        summary = summarize(manifest, scalars, 1, 3, 0.25)
+
+        self.assertEqual(summary.loc[0, "evidence_type"], "training_tensorboard_scalar")
+        self.assertFalse(summary.loc[0, "official_comparison_eligible"])
+
 
 if __name__ == "__main__":
     unittest.main()

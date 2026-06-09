@@ -1,0 +1,60 @@
+{
+  "protocol_id": "pirl_pi05_libero_arxiv_2510.25889v3",
+  "source": "arXiv:2510.25889v3 Table 3 and Table 11",
+  "model_family": "pi0.5",
+  "train_epochs": 500,
+  "global_batch_size": 2048,
+  "parallel_environments": 64,
+  "rollout_epochs": 8,
+  "actor_lr": 0.000005,
+  "critic_lr": 0.0001,
+  "reward_discount": 0.99,
+  "gae_lambda": 0.95,
+  "clip_ratio": 0.2,
+  "flow_noise_min_logvar": 0.04,
+  "flow_noise_max_logvar": 0.10,
+  "flow_noise_entropy_bonus": 0.005,
+  "official_evaluation": {
+    "task_count": 10,
+    "states_per_task": 50,
+    "total_states": 500
+  },
+  "suites": {
+    "libero_spatial": {
+      "interaction_steps": 240,
+      "update_epochs": 1,
+      "action_prediction_horizon": 10,
+      "action_replan_horizon": 5,
+      "denoise_steps": 3,
+      "scheduler": false,
+      "published_flow_noise_success_percent": 99.6
+    },
+    "libero_object": {
+      "interaction_steps": 320,
+      "update_epochs": 1,
+      "action_prediction_horizon": 10,
+      "action_replan_horizon": 5,
+      "denoise_steps": 5,
+      "scheduler": false,
+      "published_flow_noise_success_percent": 100.0
+    },
+    "libero_goal": {
+      "interaction_steps": 320,
+      "update_epochs": 3,
+      "action_prediction_horizon": 10,
+      "action_replan_horizon": 5,
+      "denoise_steps": 5,
+      "scheduler": false,
+      "published_flow_noise_success_percent": 99.6
+    },
+    "libero_10": {
+      "interaction_steps": 480,
+      "update_epochs": 4,
+      "action_prediction_horizon": 10,
+      "action_replan_horizon": 10,
+      "denoise_steps": 5,
+      "scheduler": true,
+      "published_flow_noise_success_percent": 94.0
+    }
+  }
+}

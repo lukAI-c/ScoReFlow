@@ -14,6 +14,9 @@ EXP_ROOT="${EXP_ROOT:-${RLINF_ROOT}/logs/scoreflow_original}"
 
 REAL_CONFIG_PRESET="${REAL_CONFIG_PRESET:-0}"
 PREPARE_ONLY="${PREPARE_ONLY:-0}"
+PATCH_RLINF="${PATCH_RLINF:-1}"
+PIRL_OFFICIAL_PROTOCOL="${PIRL_OFFICIAL_PROTOCOL:-0}"
+MODEL_PROVENANCE="${MODEL_PROVENANCE:-}"
 if [[ "${REAL_CONFIG_PRESET}" == "1" ]]; then
   POLICY_VARIANT="${POLICY_VARIANT:-pi05}"
   SUITES="${SUITES:-libero_spatial}"
@@ -26,6 +29,25 @@ if [[ "${REAL_CONFIG_PRESET}" == "1" ]]; then
   EVAL_ENVS="${EVAL_ENVS:-8}"
   MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-4}"
   GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-8}"
+fi
+if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
+  POLICY_VARIANT="pi05"
+  MAX_EPOCHS="500"
+  ROLLOUT_EPOCH="8"
+  EVAL_ROLLOUT_EPOCH="1"
+  TRAIN_ENVS="64"
+  EVAL_ENVS="500"
+  MICRO_BATCH_SIZE="128"
+  GLOBAL_BATCH_SIZE="2048"
+  VAL_CHECK_INTERVAL="-1"
+  if [[ -z "${MODEL_PROVENANCE}" ]]; then
+    echo "MODEL_PROVENANCE is required for PIRL_OFFICIAL_PROTOCOL=1" >&2
+    exit 1
+  fi
+  if [[ ! "${MODEL_PROVENANCE}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo "MODEL_PROVENANCE must be sha256:<64 lowercase hex characters>" >&2
+    exit 1
+  fi
 fi
 
 POLICY_VARIANT="${POLICY_VARIANT:-pi0}"
@@ -41,7 +63,24 @@ EVAL_ENVS="${EVAL_ENVS:-4}"
 MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-4}"
 GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-8}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-100000}"
+VAL_CHECK_INTERVAL="${VAL_CHECK_INTERVAL:-1}"
 EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+is_pirl_suite() {
+  case "$1" in
+    libero_spatial | libero_object | libero_goal | libero_10) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
+  for suite in ${SUITES}; do
+    if ! is_pirl_suite "${suite}"; then
+      echo "PIRL_OFFICIAL_PROTOCOL=1 only supports LIBERO suites, got: ${suite}" >&2
+      exit 1
+    fi
+  done
+fi
 
 export MUJOCO_GL="${MUJOCO_GL:-osmesa}"
 export PYOPENGL_PLATFORM="${PYOPENGL_PLATFORM:-osmesa}"
@@ -66,6 +105,7 @@ METAWORLD_MODEL_DIR="${METAWORLD_MODEL_DIR:-/path/to/RLinf-Pi0-MetaWorld-SFT}"
 CALVIN_MODEL_DIR="${CALVIN_MODEL_DIR:-/path/to/RLinf-Pi0-CALVIN-ABC-D-SFT}"
 
 MANIFEST="${EXP_ROOT}/run_manifest.csv"
+PIRL_PROTOCOL_TOOL="${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_protocol.py"
 
 mkdir -p "${EXP_ROOT}"
 
@@ -140,6 +180,26 @@ method_overrides() {
   esac
 }
 
+protocol_suite_value() {
+  local suite="$1"
+  local field="$2"
+  case "${suite}:${field}" in
+    libero_spatial:interaction_steps) echo "240" ;;
+    libero_object:interaction_steps | libero_goal:interaction_steps) echo "320" ;;
+    libero_10:interaction_steps) echo "480" ;;
+    libero_spatial:update_epochs | libero_object:update_epochs) echo "1" ;;
+    libero_goal:update_epochs) echo "3" ;;
+    libero_10:update_epochs) echo "4" ;;
+    libero_spatial:action_replan_horizon | libero_object:action_replan_horizon | libero_goal:action_replan_horizon) echo "5" ;;
+    libero_10:action_replan_horizon) echo "10" ;;
+    libero_spatial:denoise_steps) echo "3" ;;
+    libero_object:denoise_steps | libero_goal:denoise_steps | libero_10:denoise_steps) echo "5" ;;
+    libero_10:scheduler) echo "true" ;;
+    libero_spatial:scheduler | libero_object:scheduler | libero_goal:scheduler) echo "false" ;;
+    *) echo "Unsupported pi_RL protocol field: ${suite}:${field}" >&2; return 1 ;;
+  esac
+}
+
 patch_rlinf() {
   "${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/patch_openpi_score_flow.py" \
     --rlinf-root "${RLINF_ROOT}"
@@ -152,7 +212,7 @@ patch_rlinf() {
 
 append_manifest_header() {
   if [[ ! -f "${MANIFEST}" ]]; then
-    echo "suite,config,model_dir,method,seed,run_name,status,run_dir,start_time,end_time,exit_code" > "${MANIFEST}"
+    echo "suite,config,model_dir,model_provenance,protocol_id,protocol_artifact,method,seed,run_name,status,run_dir,start_time,end_time,exit_code" > "${MANIFEST}"
   fi
 }
 
@@ -161,11 +221,30 @@ run_one() {
   local method="$2"
   local seed="$3"
   local config_name suite_model_dir run_name run_dir run_log start_time end_time exit_code status
+  local interaction_steps update_epochs action_replan_horizon denoise_steps scheduler
+  local protocol_id protocol_artifact model_provenance
   config_name="$(config_for_suite "${suite}")"
   suite_model_dir="$(model_dir_for_suite "${suite}")"
   run_name="${suite}_${method}_seed${seed}"
   run_dir="${EXP_ROOT}/${suite}/${run_name}"
   run_log="${run_dir}/run.log"
+  protocol_artifact=""
+  model_provenance="${MODEL_PROVENANCE:-unverified:${suite_model_dir}}"
+  interaction_steps="0"
+  update_epochs="0"
+  action_replan_horizon="0"
+  denoise_steps="0"
+  scheduler="false"
+  protocol_id="development_unaligned"
+  if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
+    interaction_steps="$(protocol_suite_value "${suite}" interaction_steps)"
+    update_epochs="$(protocol_suite_value "${suite}" update_epochs)"
+    action_replan_horizon="$(protocol_suite_value "${suite}" action_replan_horizon)"
+    denoise_steps="$(protocol_suite_value "${suite}" denoise_steps)"
+    scheduler="$(protocol_suite_value "${suite}" scheduler)"
+    protocol_id="pirl_pi05_libero_arxiv_2510.25889v3"
+    protocol_artifact="${run_dir}/training_protocol.json"
+  fi
   mkdir -p "${run_dir}"
   start_time="$(date -Iseconds)"
 
@@ -176,7 +255,7 @@ run_one() {
     "runner.logger.log_path=${run_dir}"
     "runner.logger.experiment_name=${run_name}"
     "runner.max_epochs=${MAX_EPOCHS}"
-    "runner.val_check_interval=1"
+    "runner.val_check_interval=${VAL_CHECK_INTERVAL}"
     "runner.save_interval=${SAVE_INTERVAL}"
     "algorithm.rollout_epoch=${ROLLOUT_EPOCH}"
     "algorithm.eval_rollout_epoch=${EVAL_ROLLOUT_EPOCH}"
@@ -191,6 +270,32 @@ run_one() {
     "rollout.model.model_path=${suite_model_dir}"
   )
 
+  if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
+    cmd+=(
+      "algorithm.update_epoch=${update_epochs}"
+      "algorithm.gamma=0.99"
+      "algorithm.gae_lambda=0.95"
+      "algorithm.clip_ratio_high=0.2"
+      "algorithm.clip_ratio_low=0.2"
+      "env.train.max_episode_steps=${interaction_steps}"
+      "env.train.max_steps_per_rollout_epoch=${interaction_steps}"
+      "env.eval.max_episode_steps=${interaction_steps}"
+      "env.eval.max_steps_per_rollout_epoch=${interaction_steps}"
+      "actor.optim.lr=5.0e-6"
+      "actor.optim.value_lr=1.0e-4"
+      "actor.model.action_horizon=10"
+      "actor.model.num_action_chunks=${action_replan_horizon}"
+      "actor.model.openpi.num_steps=${denoise_steps}"
+      "actor.model.openpi.noise_logvar_range=[0.04,0.10]"
+      "algorithm.entropy_bonus=0.005"
+    )
+    if [[ "${scheduler}" == "true" ]]; then
+      cmd+=("actor.optim.total_training_steps=500" "actor.optim.lr_scheduler=cosine")
+    else
+      cmd+=("actor.optim.lr_scheduler=constant")
+    fi
+  fi
+
   for override in ${EXTRA_OVERRIDES}; do
     cmd+=("${override}")
   done
@@ -200,12 +305,46 @@ run_one() {
 
   printf "%q " "${cmd[@]}" > "${run_dir}/command.txt"
   echo >> "${run_dir}/command.txt"
+  if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
+    local scheduler_flag="--no-scheduler"
+    if [[ "${scheduler}" == "true" ]]; then
+      scheduler_flag="--scheduler"
+    fi
+    "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" emit-training \
+      --output "${protocol_artifact}" \
+      --command-file "${run_dir}/command.txt" \
+      --suite "${suite}" \
+      --method "${method}" \
+      --model-provenance "${model_provenance}" \
+      --model-family "pi0.5" \
+      --train-epochs "${MAX_EPOCHS}" \
+      --global-batch-size "${GLOBAL_BATCH_SIZE}" \
+      --parallel-environments "${TRAIN_ENVS}" \
+      --rollout-epochs "${ROLLOUT_EPOCH}" \
+      --actor-lr "5.0e-6" \
+      --critic-lr "1.0e-4" \
+      --reward-discount "0.99" \
+      --gae-lambda "0.95" \
+      --clip-ratio "0.2" \
+      --flow-noise-min-logvar "0.04" \
+      --flow-noise-max-logvar "0.10" \
+      --flow-noise-entropy-bonus "0.005" \
+      --interaction-steps "${interaction_steps}" \
+      --update-epochs "${update_epochs}" \
+      --action-prediction-horizon "10" \
+      --action-replan-horizon "${action_replan_horizon}" \
+      --denoise-steps "${denoise_steps}" \
+      "${scheduler_flag}"
+    "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" validate \
+      --kind training \
+      --artifact "${protocol_artifact}"
+  fi
 
   if [[ "${PREPARE_ONLY}" == "1" ]]; then
     end_time="$(date -Iseconds)"
     echo "[$(date)] PREPARED ${run_name}"
-    printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-      "${suite}" "${config_name}" "${suite_model_dir}" "${method}" "${seed}" "${run_name}" "prepared" "${run_dir}" \
+    printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+      "${suite}" "${config_name}" "${suite_model_dir}" "${model_provenance}" "${protocol_id}" "${protocol_artifact}" "${method}" "${seed}" "${run_name}" "prepared" "${run_dir}" \
       "${start_time}" "${end_time}" "0" >> "${MANIFEST}"
     return
   fi
@@ -221,12 +360,14 @@ run_one() {
   else
     status="failed"
   fi
-  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-    "${suite}" "${config_name}" "${suite_model_dir}" "${method}" "${seed}" "${run_name}" "${status}" "${run_dir}" \
+  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+    "${suite}" "${config_name}" "${suite_model_dir}" "${model_provenance}" "${protocol_id}" "${protocol_artifact}" "${method}" "${seed}" "${run_name}" "${status}" "${run_dir}" \
     "${start_time}" "${end_time}" "${exit_code}" >> "${MANIFEST}"
 }
 
-patch_rlinf
+if [[ "${PATCH_RLINF}" == "1" ]]; then
+  patch_rlinf
+fi
 append_manifest_header
 for suite in ${SUITES}; do
   for seed in ${SEEDS}; do

@@ -224,6 +224,8 @@ def summarize(
             summary["status"] = "unknown"
         if not summary.empty:
             summary["has_scalar_evidence"] = False
+            summary["evidence_type"] = "manifest_only"
+            summary["official_comparison_eligible"] = False
         return summary
 
     for run_name, group in scalars.groupby("run_name"):
@@ -234,6 +236,8 @@ def summarize(
             "seed": seed,
             "run_name": run_name,
             "has_scalar_evidence": True,
+            "evidence_type": "training_tensorboard_scalar",
+            "official_comparison_eligible": False,
         }
         for name, (tag, tag_source) in metric_tags.items():
             values = group[group["tag"] == tag].sort_values("step")
@@ -258,6 +262,7 @@ def summarize(
     else:
         summary["status"] = "unknown"
     summary["has_scalar_evidence"] = summary["has_scalar_evidence"].eq(True)
+    summary["official_comparison_eligible"] = False
     for metric in metric_tags:
         evidence_column = f"{metric}_has_evidence"
         summary[evidence_column] = summary[evidence_column].eq(True)
