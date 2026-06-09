@@ -61,6 +61,7 @@ class CollectorStatusTest(unittest.TestCase):
         self.assertEqual(statuses["libero_spatial_cr_reflow_seed45"], "failed")
         self.assertEqual(statuses["libero_spatial_cr_reflow_seed46"], "unknown")
         self.assertEqual(statuses["libero_spatial_cr_reflow_seed47"], "unknown")
+        self.assertTrue(summary["has_scalar_evidence"].all())
         self.assertTrue((summary["num_seeds"] == 1).all())
         self.assertFalse(summary["main_table"].any())
         self.assertTrue((summary["final_success_mean"] == 1.0).all())
@@ -73,6 +74,7 @@ class CollectorStatusTest(unittest.TestCase):
         summary = summarize(pd.DataFrame(), scalars, 1, 3, 0.25)
 
         self.assertEqual(summary.loc[0, "status"], "unknown")
+        self.assertTrue(summary.loc[0, "has_scalar_evidence"])
         self.assertNotIn("num_seeds", summary)
 
     def test_manifest_only_missing_status_is_unknown(self) -> None:
@@ -83,7 +85,28 @@ class CollectorStatusTest(unittest.TestCase):
         summary = summarize(manifest, pd.DataFrame(), 1, 3, 0.25)
 
         self.assertEqual(summary.loc[0, "status"], "unknown")
+        self.assertFalse(summary.loc[0, "has_scalar_evidence"])
         self.assertNotIn("num_seeds", summary)
+
+    def test_done_rows_without_scalar_evidence_do_not_enter_aggregates(self) -> None:
+        manifest = pd.DataFrame(
+            [
+                manifest_row("libero_spatial_cr_reflow_seed42", "42", "done"),
+                manifest_row("libero_spatial_cr_reflow_seed43", "43", "done"),
+                manifest_row("libero_spatial_cr_reflow_seed44", "44", "done"),
+            ]
+        )
+        scalars = pd.DataFrame(
+            [scalar_row("libero_spatial_cr_reflow_seed42", "42", 1.0)]
+        )
+
+        summary = summarize(manifest, scalars, 2, 3, 0.25)
+        evidence = summary.set_index("seed")["has_scalar_evidence"].to_dict()
+
+        self.assertEqual(evidence, {"42": True, "43": False, "44": False})
+        self.assertTrue((summary["num_seeds"] == 1).all())
+        self.assertFalse(summary["main_table"].any())
+        self.assertTrue((summary["final_success_mean"] == 1.0).all())
 
 
 if __name__ == "__main__":

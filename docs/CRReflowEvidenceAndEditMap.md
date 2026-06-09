@@ -533,3 +533,72 @@ mixed terminal/scalar-only aggregate:
 num_seeds=1
 main_table=False with min_seeds=2
 ```
+
+## Round 8 Exact Feasible E-Step and Final Comparison
+
+Round 8 removed the remaining mismatch between the eta solver and returned
+reward weights. One float32 exact-candidate path now constructs the
+post-clipping, mean-normalized returned weights and their achieved KL. Eta-max
+feasibility, eta-min selection, all bisection comparisons, and the returned
+candidate use that same path. Uniform valid-entry weights are used only for
+zero epsilon or an exact eta-max candidate that is still infeasible.
+
+The separate numeric `cr_reflow_uniform_fallback` diagnostic is logged and
+collected. Deterministic and seeded multi-batch regressions verify that feasible
+solutions remain non-uniform, match the selected exact candidate, and satisfy
+the KL bound. The collector also preserves scalar-less terminal rows in
+per-run output but excludes them from method aggregates.
+
+One real pi0.5 LIBERO Spatial full-CR readiness row completed before the final
+comparison:
+
+```text
+Readiness EXP_ROOT: $R/RLinf/logs/cr_reflow_round8_exact_candidate_readiness_20260606
+status: done
+exit_code: 0
+has_scalar_evidence: true
+final_success: 1.0
+final_cr_reflow_weight_kl: 0.045833
+final_cr_reflow_eta: 2.879332
+final_cr_reflow_weight_ess: 0.916226
+final_cr_reflow_eta_at_bound: 0.0
+final_cr_reflow_uniform_fallback: 0.0
+tag source for all exact CR diagnostics: preferred
+```
+
+The corrected original comparison then ran on real pi0.5 LIBERO Spatial with
+seeds `42 43 44`, methods `flow_noise_baseline`, `tr_scalar_l2`,
+`cr_reflow_no_anchor`, and `cr_reflow`, 15 epochs, 4 train envs, and 8 eval
+envs:
+
+```text
+Comparison EXP_ROOT: $R/RLinf/logs/cr_reflow_round8_final_comparison_20260606
+run_manifest.csv: 13 lines including header
+terminal rows: 12 done, 12 exit code 0
+launcher: not running after completion
+command.txt files: 12
+run.log files: 12
+TensorBoard event files: 12
+collector rows with scalar evidence: 12/12
+collector artifacts: manifest CSV, raw-scalars CSV, summary CSV
+```
+
+Collected 3-seed aggregates:
+
+| method | success mean | success std | approx KL mean | approx KL std | scalar L2 disp mean | CR weight KL mean | CR eta mean | CR ESS mean | eta-bound mean | uniform-fallback mean |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `flow_noise_baseline` | 0.375000 | 0.544862 | 0.017796 | 0.012386 | 0.000000 | - | - | - | - | - |
+| `tr_scalar_l2` | 0.750000 | 0.125000 | 0.020504 | 0.013499 | 0.051503 | - | - | - | - | - |
+| `cr_reflow_no_anchor` | 0.708333 | 0.260208 | 0.006129 | 0.009061 | 0.000000 | 0.044097 | 2.747101 | 0.906065 | 0.0 | 0.0 |
+| `cr_reflow` | 0.375000 | 0.216506 | 0.009759 | 0.005557 | 0.000000 | 0.048264 | 3.015223 | 0.911990 | 0.0 | 0.0 |
+
+All four methods have `num_seeds=3` and `main_table=True`; all six CR rows use
+`preferred` exact diagnostic tags. Measured decision: `tr_scalar_l2` has the
+highest final-success mean, with `cr_reflow_no_anchor` close behind and at
+lower measured approximate KL. Full `cr_reflow` matches the baseline
+final-success mean, so the conservative anchor does not improve this
+configuration. These are directional three-seed results, not a statistical
+significance claim.
+
+After collection, live Inspire status confirmed H100 notebook
+`scoreflow-h100b-0603` was `STOPPED`.

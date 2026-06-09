@@ -161,6 +161,10 @@ def selected_metric_tags(scalars: pd.DataFrame) -> dict[str, MetricTagSelection]
             ("cr", "reflow", "eta", "bound"),
             ("actor/cr_reflow_eta_at_bound",),
         ),
+        "final_cr_reflow_uniform_fallback": (
+            ("cr", "reflow", "uniform", "fallback"),
+            ("actor/cr_reflow_uniform_fallback",),
+        ),
         "final_cr_reflow_weight_max": (
             ("cr", "reflow", "weight", "max"),
             ("actor/cr_reflow_weight_max",),
@@ -218,11 +222,19 @@ def summarize(
             summary["status"] = summary["status"].fillna("unknown").astype(str)
         elif not summary.empty:
             summary["status"] = "unknown"
+        if not summary.empty:
+            summary["has_scalar_evidence"] = False
         return summary
 
     for run_name, group in scalars.groupby("run_name"):
         suite, method, seed = split_run_name(str(run_name))
-        row: dict[str, Any] = {"suite": suite, "method": method, "seed": seed, "run_name": run_name}
+        row: dict[str, Any] = {
+            "suite": suite,
+            "method": method,
+            "seed": seed,
+            "run_name": run_name,
+            "has_scalar_evidence": True,
+        }
         for name, (tag, tag_source) in metric_tags.items():
             values = group[group["tag"] == tag].sort_values("step")
             row[name] = values["value"].iloc[-1] if not values.empty else math.nan
@@ -243,9 +255,12 @@ def summarize(
         summary["status"] = summary["status"].fillna("unknown").astype(str)
     else:
         summary["status"] = "unknown"
+    summary["has_scalar_evidence"] = summary["has_scalar_evidence"].eq(True)
 
     agg_rows: list[dict[str, Any]] = []
-    complete = summary[summary["status"] == "done"]
+    complete = summary[
+        (summary["status"] == "done") & summary["has_scalar_evidence"]
+    ]
     for (suite, method), group in complete.groupby(["suite", "method"]):
         seed_count = group["seed"].astype(str).nunique()
         row = {"suite": suite, "method": method, "num_seeds": seed_count, "main_table": seed_count >= min_seeds}

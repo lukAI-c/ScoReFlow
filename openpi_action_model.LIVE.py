@@ -1925,6 +1925,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_ess": 0.0,
             "cr_reflow_weight_kl": 0.0,
             "cr_reflow_eta_at_bound": 0.0,
+            "cr_reflow_uniform_fallback": 0.0,
             "cr_reflow_valid_fraction": 0.0,
             "cr_reflow_target_displacement": 0.0,
             "cr_reflow_policy_kl_proxy": 0.0,
@@ -2027,75 +2028,81 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         valid = mask > 0
         num_valid = int(valid.sum().detach().cpu().item())
         if num_valid == 0:
-            return torch.zeros_like(advantages, dtype=torch.float32), 0.0, 0.0, 0.0, 0.0
+            return (
+                torch.zeros_like(advantages, dtype=torch.float32),
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            )
 
         if not used_advantages:
-            return mask, 0.0, 1.0, 0.0, 0.0
+            return mask, 0.0, 1.0, 0.0, 0.0, 0.0
 
         flat_adv = advantages.float()[valid]
         num_weights = int(flat_adv.numel())
         if float(flat_adv.std(unbiased=False).detach().cpu().item()) <= 1.0e-8:
-            return mask, 0.0, 1.0, 0.0, 0.0
+            return mask, 0.0, 1.0, 0.0, 0.0, 0.0
 
         epsilon = max(float(getattr(self.config, "cr_reflow_kl_epsilon", 0.05)), 0.0)
         eta_min = max(float(getattr(self.config, "cr_reflow_eta_min", 0.01)), 1.0e-8)
         eta_max = max(float(getattr(self.config, "cr_reflow_eta_max", 10.0)), eta_min)
-
-        def kl_for_eta(eta: float) -> torch.Tensor:
-            probs = torch.softmax(flat_adv / eta, dim=0)
-            return (probs * (torch.log(probs.clamp_min(1.0e-12)) + math.log(num_weights))).sum()
-
-        use_uniform_fallback = epsilon == 0.0
-        if not use_uniform_fallback:
-            use_uniform_fallback = (
-                float(kl_for_eta(eta_max).detach().cpu().item()) > epsilon
-            )
-
-        eta_at_bound = 0.0
-        if use_uniform_fallback:
-            eta = eta_max
-            eta_at_bound = 1.0
-        elif float(kl_for_eta(eta_min).detach().cpu().item()) <= epsilon:
-            eta = eta_min
-            eta_at_bound = 1.0
-        else:
-            lo = eta_min
-            hi = eta_max
-            for _ in range(32):
-                mid = 0.5 * (lo + hi)
-                if float(kl_for_eta(mid).detach().cpu().item()) > epsilon:
-                    lo = mid
-                else:
-                    hi = mid
-            eta = hi
-
-        weights = torch.zeros_like(advantages, dtype=flat_adv.dtype)
-        if use_uniform_fallback:
-            weights[valid] = 1.0
-        else:
-            probs = torch.softmax(flat_adv / eta, dim=0)
-            weights[valid] = probs * float(num_weights)
         clip_value = float(getattr(self.config, "cr_reflow_weight_clip", 10.0))
-        if clip_value > 0.0:
-            weights = weights.clamp(max=clip_value)
-        valid_mean = weights[valid].mean().clamp_min(1.0e-12)
-        weights = torch.where(valid, weights / valid_mean, torch.zeros_like(weights))
 
-        flat_weights = weights.float()[valid]
-        final_probs = flat_weights / flat_weights.sum().clamp_min(1.0e-12)
-        weight_kl = (
-            final_probs
-            * (torch.log(final_probs.clamp_min(1.0e-12)) + math.log(num_weights))
-        ).sum()
-        if float(weight_kl.detach().cpu().item()) > epsilon:
-            weights = mask
-            flat_weights = weights[valid]
+        def exact_candidate(eta: float):
+            probs = torch.softmax(flat_adv / eta, dim=0)
+            flat_weights = probs * float(num_weights)
+            if clip_value > 0.0:
+                flat_weights = flat_weights.clamp(max=clip_value)
+            flat_weights = flat_weights / flat_weights.mean().clamp_min(1.0e-12)
             final_probs = flat_weights / flat_weights.sum().clamp_min(1.0e-12)
             weight_kl = (
                 final_probs
-                * (torch.log(final_probs.clamp_min(1.0e-12)) + math.log(num_weights))
+                * (
+                    torch.log(final_probs.clamp_min(1.0e-12))
+                    + math.log(num_weights)
+                )
             ).sum()
+            weights = torch.zeros_like(mask)
+            weights[valid] = flat_weights
+            return weights, flat_weights, weight_kl
+
+        use_uniform_fallback = epsilon == 0.0
+        eta_max_candidate = exact_candidate(eta_max)
+        if not use_uniform_fallback:
+            use_uniform_fallback = (
+                float(eta_max_candidate[2].detach().cpu().item()) > epsilon
+            )
+
+        eta_at_bound = 0.0
+        uniform_fallback = float(use_uniform_fallback)
+        if use_uniform_fallback:
+            eta = eta_max
             eta_at_bound = 1.0
+            weights = mask
+            flat_weights = weights[valid]
+            weight_kl = torch.zeros((), device=weights.device, dtype=weights.dtype)
+        else:
+            eta_min_candidate = exact_candidate(eta_min)
+            if float(eta_min_candidate[2].detach().cpu().item()) <= epsilon:
+                eta = eta_min
+                eta_at_bound = 1.0
+                weights, flat_weights, weight_kl = eta_min_candidate
+            else:
+                lo = eta_min
+                hi = eta_max
+                weights, flat_weights, weight_kl = eta_max_candidate
+                for _ in range(32):
+                    mid = 0.5 * (lo + hi)
+                    mid_candidate = exact_candidate(mid)
+                    if float(mid_candidate[2].detach().cpu().item()) > epsilon:
+                        lo = mid
+                    else:
+                        hi = mid
+                        weights, flat_weights, weight_kl = mid_candidate
+                eta = hi
+
         ess = flat_weights.sum().pow(2) / flat_weights.pow(2).sum().clamp_min(1.0e-12)
         ess_fraction = float((ess / max(num_weights, 1)).detach().cpu().item())
         return (
@@ -2104,6 +2111,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             ess_fraction,
             float(weight_kl.detach().cpu().item()),
             eta_at_bound,
+            uniform_fallback,
         )
 
     def _compute_cr_reflow_loss(
@@ -2174,7 +2182,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             dtype,
             valid_mask,
         )
-        weights, eta, ess_fraction, weight_kl, eta_at_bound = (
+        weights, eta, ess_fraction, weight_kl, eta_at_bound, uniform_fallback = (
             self._cr_weights_from_advantages(
                 normalized_adv,
                 used_advantages,
@@ -2227,6 +2235,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             "cr_reflow_weight_ess": ess_fraction,
             "cr_reflow_weight_kl": weight_kl,
             "cr_reflow_eta_at_bound": eta_at_bound,
+            "cr_reflow_uniform_fallback": uniform_fallback,
             "cr_reflow_valid_fraction": valid_fraction,
             "cr_reflow_target_displacement": float(
                 target_displacement.detach().cpu().item()
