@@ -19,6 +19,7 @@ from scripts.rlinf_scoreflow.patch_rlinf_pirl_evaluator import (
     patch_runner_text,
     patch_rollout_text,
 )
+from scripts.rlinf_scoreflow.pirl_evidence import expected_method_overrides
 from scripts.rlinf_scoreflow.pirl_official_eval import build_artifact, read_checkpoint_receipt
 from scripts.rlinf_scoreflow.pirl_protocol import (
     expected_evaluation_overrides,
@@ -46,6 +47,10 @@ class PiRLOfficialEvalTest(unittest.TestCase):
         model.mkdir()
         (model / "weights.bin").write_bytes(b"pi05-sft")
         training_command = root / "training-command.txt"
+        training_overrides = {
+            **expected_training_overrides(protocol, suite),
+            **expected_method_overrides("flow_noise_baseline"),
+        }
         training_command.write_text(
             " ".join(
                 [
@@ -53,10 +58,7 @@ class PiRLOfficialEvalTest(unittest.TestCase):
                     "train.py",
                     "--config-name",
                     protocol["suites"][suite]["config_name"],
-                    *(
-                        f"{key}={value}"
-                        for key, value in expected_training_overrides(protocol, suite).items()
-                    ),
+                    *(f"{key}={value}" for key, value in training_overrides.items()),
                 ]
             )
             + "\n",
@@ -177,6 +179,25 @@ class PiRLOfficialEvalTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "reset_state_id values must be unique"):
                 build_artifact(args)
+
+    def test_reported_success_must_match_raw_episode_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            args = self.make_valid_inputs(Path(temp_dir))
+            artifact = build_artifact(args)
+            rows = args.raw_episodes.read_text(encoding="utf-8").splitlines()
+            last = json.loads(rows[-1])
+            last["success"] = True
+            rows[-1] = json.dumps(last)
+            args.raw_episodes.write_text("\n".join(rows) + "\n", encoding="utf-8")
+            artifact["raw_episode_sha256"] = sha256_file(args.raw_episodes)
+
+            result = validate_evaluation_artifact(artifact, load_protocol(args.protocol))
+
+            self.assertFalse(result.compliant)
+            self.assertIn(
+                "reported successes must match raw episode evidence",
+                result.errors,
+            )
 
     def test_wrong_evaluation_command_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

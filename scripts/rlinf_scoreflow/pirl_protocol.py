@@ -12,13 +12,22 @@ from typing import Any
 
 try:
     from .pirl_evidence import (
+        expected_method_overrides,
         parse_command,
+        raw_episode_errors,
         reproducibility_errors,
         sha256_file,
         sha256_tree,
     )
 except ImportError:
-    from pirl_evidence import parse_command, reproducibility_errors, sha256_file, sha256_tree
+    from pirl_evidence import (
+        expected_method_overrides,
+        parse_command,
+        raw_episode_errors,
+        reproducibility_errors,
+        sha256_file,
+        sha256_tree,
+    )
 
 
 PROTOCOL_PATH = Path(__file__).parent / "protocols" / "pirl_pi05_libero.json"
@@ -187,10 +196,18 @@ def validate_training_artifact(
             errors.append("model_provenance does not match model_path")
     command_path = Path(str(artifact.get("command_file", "")))
     verify_file_reference(artifact, "command_file", "command_sha256", errors)
+    try:
+        required_overrides = {
+            **expected_training_overrides(protocol, suite),
+            **expected_method_overrides(str(artifact.get("method", ""))),
+        }
+    except ValueError as exc:
+        errors.append(str(exc))
+        required_overrides = expected_training_overrides(protocol, suite)
     errors.extend(
         command_errors(
             command_path,
-            expected_training_overrides(protocol, suite),
+            required_overrides,
             protocol["suites"][suite]["config_name"],
         )
     )
@@ -257,6 +274,11 @@ def validate_evaluation_artifact(
                 errors.append("checkpoint receipt path must match checkpoint_path")
             if receipt.get("checkpoint_sha256") != sha256_file(checkpoint_path):
                 errors.append("checkpoint receipt SHA-256 must match checkpoint_path")
+            state_dict_keys = receipt.get("state_dict_keys")
+            if not isinstance(state_dict_keys, int) or state_dict_keys <= 0:
+                errors.append("checkpoint receipt state_dict_keys must be positive")
+            if artifact.get("checkpoint_state_dict_keys") != state_dict_keys:
+                errors.append("checkpoint_state_dict_keys must match checkpoint receipt")
         except (json.JSONDecodeError, OSError, TypeError):
             errors.append("checkpoint receipt must contain valid JSON")
     terminal_path = Path(str(artifact.get("terminal_status_file", "")))
@@ -267,27 +289,7 @@ def validate_evaluation_artifact(
                 errors.append("terminal status must record done with exit_code 0")
         except (json.JSONDecodeError, OSError, TypeError):
             errors.append("terminal status must contain valid JSON")
-    raw_path = Path(str(artifact.get("raw_episode_artifact", "")))
-    if raw_path.is_file():
-        try:
-            rows = [
-                json.loads(line)
-                for line in raw_path.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
-            pairs = {(row.get("task_id"), row.get("trial_id")) for row in rows}
-            reset_ids = {row.get("reset_state_id") for row in rows}
-            expected_pairs = {
-                (task_id, trial_id)
-                for task_id in range(official["task_count"])
-                for trial_id in range(official["states_per_task"])
-            }
-            if len(rows) != official["total_states"] or pairs != expected_pairs:
-                errors.append("raw episode evidence must contain the exact official task-state set")
-            if len(reset_ids) != official["total_states"]:
-                errors.append("raw episode reset_state_id values must be unique")
-        except (json.JSONDecodeError, OSError, TypeError, AttributeError):
-            errors.append("raw episode evidence must contain valid JSON objects")
+    errors.extend(raw_episode_errors(artifact, official, task_results))
     training_path = Path(str(artifact.get("training_artifact", "")))
     if training_path.is_file():
         try:

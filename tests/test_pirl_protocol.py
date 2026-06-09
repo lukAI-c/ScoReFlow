@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from scripts.rlinf_scoreflow.pirl_evidence import expected_method_overrides
 from scripts.rlinf_scoreflow.pirl_protocol import (
     expected_training_fields,
     expected_training_overrides,
@@ -31,6 +32,7 @@ class PiRLProtocolTest(unittest.TestCase):
         (model / "weights.bin").write_bytes(b"pi05-sft")
         suite = "libero_spatial"
         overrides = expected_training_overrides(self.protocol, suite)
+        overrides.update(expected_method_overrides("flow_noise_baseline"))
         command = root / "command.txt"
         tokens = [
             "python",
@@ -109,6 +111,19 @@ class PiRLProtocolTest(unittest.TestCase):
 
             self.assertFalse(result.compliant)
             self.assertTrue(any("training.train_epochs" in error for error in result.errors))
+
+    def test_method_label_must_match_final_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact = self.make_training_artifact(Path(temp_dir))
+            artifact["method"] = "cr_reflow"
+
+            result = validate_training_artifact(artifact, self.protocol)
+
+            self.assertFalse(result.compliant)
+            self.assertTrue(
+                any("cr_reflow_mode" in error for error in result.errors),
+                result.errors,
+            )
 
     def test_training_scalar_cannot_pass_official_evaluation(self) -> None:
         result = validate_evaluation_artifact(

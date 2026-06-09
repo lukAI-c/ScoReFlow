@@ -40,6 +40,8 @@ def read_episodes(path: Path) -> list[dict[str, Any]]:
         missing = required - row.keys()
         if missing:
             raise ValueError(f"line {line_number} is missing fields: {sorted(missing)}")
+        if not isinstance(row["success"], bool):
+            raise ValueError(f"line {line_number} success must be a boolean")
         episodes.append(row)
     return episodes
 

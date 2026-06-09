@@ -57,6 +57,32 @@ def parse_command(path: Path) -> tuple[dict[str, str], tuple[str, ...], str | No
     return overrides, tuple(duplicates), config_name
 
 
+def expected_method_overrides(method: str) -> dict[str, str]:
+    shared = {
+        "actor.model.openpi.noise_method": "flow_noise",
+        "actor.model.openpi.score_flow_mode": "none",
+        "actor.model.openpi.tr_penalty_mode": "none",
+        "actor.model.openpi.cr_reflow_mode": "none",
+    }
+    if method == "flow_noise_baseline":
+        return shared
+    if method == "scoreflow_original":
+        return {**shared, "actor.model.openpi.score_flow_mode": "learned_alpha"}
+    if method == "tr_scalar_l2":
+        return {**shared, "actor.model.openpi.tr_penalty_mode": "scalar_l2"}
+    if method in ("tr_pullback", "tr_pullback_matched"):
+        return {**shared, "actor.model.openpi.tr_penalty_mode": "terminal_pullback"}
+    if method == "cr_reflow_no_anchor":
+        return {
+            **shared,
+            "actor.model.openpi.cr_reflow_mode": "cr_reflow_no_anchor",
+            "actor.model.openpi.cr_reflow_anchor_beta": "0.0",
+        }
+    if method == "cr_reflow":
+        return {**shared, "actor.model.openpi.cr_reflow_mode": "cr_reflow"}
+    raise ValueError(f"unsupported method: {method}")
+
+
 def reproducibility_errors(
     artifact: dict[str, Any],
     training_path: Path,
@@ -93,4 +119,52 @@ def reproducibility_errors(
                 errors.append("reproducibility base_config_sha256 does not match")
     except (json.JSONDecodeError, OSError, TypeError):
         errors.append("reproducibility bundle must contain valid JSON")
+    return errors
+
+
+def raw_episode_errors(
+    artifact: dict[str, Any],
+    official: dict[str, Any],
+    task_results: Any,
+) -> list[str]:
+    path = Path(str(artifact.get("raw_episode_artifact", "")))
+    if not path.is_file():
+        return []
+    errors: list[str] = []
+    try:
+        rows = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if any(not isinstance(row.get("success"), bool) for row in rows):
+            errors.append("raw episode success values must be booleans")
+        pairs = {(row.get("task_id"), row.get("trial_id")) for row in rows}
+        reset_ids = {row.get("reset_state_id") for row in rows}
+        expected_pairs = {
+            (task_id, trial_id)
+            for task_id in range(official["task_count"])
+            for trial_id in range(official["states_per_task"])
+        }
+        if len(rows) != official["total_states"] or pairs != expected_pairs:
+            errors.append("raw episode evidence must contain the exact official task-state set")
+        if len(reset_ids) != official["total_states"]:
+            errors.append("raw episode reset_state_id values must be unique")
+        if artifact.get("successes") != sum(row.get("success") is True for row in rows):
+            errors.append("reported successes must match raw episode evidence")
+        task_successes = {
+            task_id: sum(
+                row.get("success") is True
+                for row in rows
+                if row.get("task_id") == task_id
+            )
+            for task_id in range(official["task_count"])
+        }
+        if isinstance(task_results, list) and any(
+            task_successes.get(task.get("task_id")) != task.get("successes")
+            for task in task_results
+        ):
+            errors.append("task_results successes must match raw episode evidence")
+    except (json.JSONDecodeError, OSError, TypeError, AttributeError):
+        errors.append("raw episode evidence must contain valid JSON objects")
     return errors
