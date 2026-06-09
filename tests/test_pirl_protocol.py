@@ -75,8 +75,16 @@ class PiRLProtocolTest(unittest.TestCase):
                 "status": "done",
                 "total_states": 500,
                 "successes": 500,
+                "success_rate": 1.0,
+                "success_percent": 100.0,
                 "checkpoint_provenance": self.provenance,
+                "checkpoint_path": "/checkpoint/actor/model_state_dict/full_weights.pt",
+                "checkpoint_load_receipt": "checkpoint_load_receipt.json",
+                "checkpoint_load_receipt_sha256": self.command_sha256,
+                "checkpoint_state_dict_keys": 123,
                 "raw_episode_artifact": "episodes.jsonl",
+                "raw_episode_sha256": self.command_sha256,
+                "command_sha256": self.command_sha256,
                 "task_results": [
                     {"task_id": task_id, "evaluated_states": 50, "successes": 50}
                     for task_id in range(10)
@@ -86,6 +94,39 @@ class PiRLProtocolTest(unittest.TestCase):
         )
 
         self.assertTrue(result.compliant)
+
+    def test_evaluation_requires_exact_official_task_ids(self) -> None:
+        result = validate_evaluation_artifact(
+            {
+                "protocol_id": self.protocol["protocol_id"],
+                "suite": "libero_spatial",
+                "status": "done",
+                "total_states": 500,
+                "successes": 500,
+                "success_rate": 1.0,
+                "success_percent": 100.0,
+                "checkpoint_provenance": self.provenance,
+                "checkpoint_path": "/checkpoint/actor/model_state_dict/full_weights.pt",
+                "checkpoint_load_receipt": "checkpoint_load_receipt.json",
+                "checkpoint_load_receipt_sha256": self.command_sha256,
+                "checkpoint_state_dict_keys": 123,
+                "raw_episode_artifact": "episodes.jsonl",
+                "raw_episode_sha256": self.command_sha256,
+                "command_sha256": self.command_sha256,
+                "task_results": [
+                    {
+                        "task_id": task_id + 10,
+                        "evaluated_states": 50,
+                        "successes": 50,
+                    }
+                    for task_id in range(10)
+                ],
+            },
+            self.protocol,
+        )
+
+        self.assertFalse(result.compliant)
+        self.assertTrue(any("task IDs must be exactly" in error for error in result.errors))
 
 
 if __name__ == "__main__":

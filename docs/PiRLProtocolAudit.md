@@ -61,11 +61,13 @@ settings. They currently set `runner.max_epochs=1000`, while Table 11 reports
 published 500-epoch value instead of silently inheriting the current upstream
 default.
 
-The current Long config explicitly enables `use_fixed_reset_state_ids`. The
-current Spatial config does not expose that flag in the top-level config.
-Therefore, 500 parallel evaluation environments alone are not accepted as
-proof that the exact ten-by-fifty official initial-state set was evaluated.
-The standalone evaluator must emit raw per-episode state/task identifiers.
+The current Object, Goal, and Long configs explicitly enable
+`use_fixed_reset_state_ids`. Spatial inherits ordered state selection during
+evaluation through `is_eval`, but its top-level config does not explicitly
+lock fixed reset IDs. Therefore, 500 parallel evaluation environments alone
+are not accepted as proof that the exact ten-by-fifty official initial-state
+set was evaluated. The standalone evaluator explicitly enables fixed and
+ordered reset IDs and emits raw per-episode state/task identifiers.
 
 Primary upstream config references:
 
@@ -93,10 +95,40 @@ Primary upstream config references:
   evaluated states per task, 500 total states, raw episode evidence, and
   internally consistent success counts.
 
+`scripts/rlinf_scoreflow/run_pirl_official_evaluation.sh` runs the standalone
+evaluation entry point with the suite-specific interaction, replan, and
+denoise settings. `patch_rlinf_pirl_evaluator.py` preserves
+`reset_state_id`, `task_id`, and `trial_id` before RLinf aggregates the
+results. The evaluator keeps the base SFT model path for policy configuration
+and normalization stats, while requiring a separate trained RLinf checkpoint.
+RLinf's native `runner.ckpt_path` loads
+`actor/model_state_dict/full_weights.pt` into the rollout policy after base
+initialization. The patched rollout worker writes a load receipt only after
+strict `load_state_dict` succeeds; the receipt includes the actual loaded
+path, state-dict key count, and SHA-256. `pirl_official_eval.py` rejects a
+missing or mismatched receipt, duplicate or incomplete states, and writes
+aggregate and per-task success with Wilson intervals.
+
 ## Live Inspire Audit State
 
-On June 9, 2026, `scoreflow-h100b-0603` was requested for live remote audit but
-remained `PENDING` for 600 seconds because no H100 resource was allocated. It
-was stopped and confirmed `STOPPED`. No GPU training or evaluation ran, and
-the live remote checkout remains unaudited. This blocks a real launch, not the
-local executable protocol implementation.
+On June 9, 2026, the live RLinf checkout at commit
+`0f2e3813be5d393381b4b690d5f75781fe4a70c8` was audited from the existing CPU
+notebook. Its evaluation runner discards raw state-level outcomes after
+aggregation, and its LIBERO environment emits success but not state/task IDs.
+The standalone evaluator patch was checked against those exact remote files;
+all three environment, evaluation-runner, and rollout-worker anchors matched.
+The audit also confirmed that denoise steps must be overridden through
+`actor.model.num_steps`. A previous reduced-budget checkpoint was used only to
+verify the checkpoint-file layout and hashing path; it is not eligible as
+official evidence.
+
+`scoreflow-h100b-0603` was requested for execution but remained `PENDING` for
+600 seconds because no H100 resource was allocated. It was stopped and
+confirmed `STOPPED`. No GPU training or evaluation ran. The remaining blocker
+is GPU execution of the matched Flow-Noise baseline and CR-Reflow candidates,
+not the live config/evaluator audit.
+
+As of June 9, 2026, the official RLinf Hugging Face organization exposes the
+pi0.5 LIBERO SFT checkpoint, but no public pi0.5 LIBERO Flow-Noise RL
+checkpoint was found. The aligned baseline therefore cannot be replaced with
+a downloaded official RL checkpoint and must be reproduced by training.

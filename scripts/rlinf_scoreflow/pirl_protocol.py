@@ -112,14 +112,44 @@ def validate_evaluation_artifact(
                 errors.append(f"task_results[{index}].successes is invalid")
             else:
                 success_total += successes
-        if len(set(task_ids)) != official["task_count"] or None in task_ids:
-            errors.append("task_results must contain unique, non-null task_id values")
+        expected_task_ids = set(range(official["task_count"]))
+        if set(task_ids) != expected_task_ids:
+            errors.append(
+                f"task_results task IDs must be exactly {sorted(expected_task_ids)}"
+            )
         if artifact.get("successes") != success_total:
             errors.append(f"successes must equal task result sum {success_total}")
+        expected_rate = success_total / official["total_states"]
+        if artifact.get("success_rate") != expected_rate:
+            errors.append(f"success_rate must equal {expected_rate}")
+        if artifact.get("success_percent") != expected_rate * 100:
+            errors.append(f"success_percent must equal {expected_rate * 100}")
     if not is_immutable_provenance(artifact.get("checkpoint_provenance")):
         errors.append("checkpoint_provenance must be sha256:<64 lowercase hex characters>")
+    checkpoint_path = artifact.get("checkpoint_path")
+    if not isinstance(checkpoint_path, str) or not checkpoint_path.endswith(
+        "/actor/model_state_dict/full_weights.pt"
+    ):
+        errors.append("checkpoint_path must identify RLinf actor full_weights.pt")
+    if not artifact.get("checkpoint_load_receipt"):
+        errors.append("checkpoint_load_receipt is required")
+    if (
+        not isinstance(artifact.get("checkpoint_state_dict_keys"), int)
+        or artifact["checkpoint_state_dict_keys"] <= 0
+    ):
+        errors.append("checkpoint_state_dict_keys must be a positive integer")
     if not artifact.get("raw_episode_artifact"):
         errors.append("raw_episode_artifact is required")
+    for field in (
+        "checkpoint_load_receipt_sha256",
+        "command_sha256",
+        "raw_episode_sha256",
+    ):
+        value = artifact.get(field)
+        if not isinstance(value, str) or not SHA256_PATTERN.fullmatch(value):
+            errors.append(f"{field} must contain 64 lowercase hex characters")
+    if artifact.get("official_comparison_eligible") is False:
+        errors.append("official_comparison_eligible must not be false")
     return ValidationResult(not errors, tuple(errors))
 
 
