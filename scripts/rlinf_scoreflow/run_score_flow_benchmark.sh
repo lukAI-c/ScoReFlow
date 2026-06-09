@@ -46,12 +46,12 @@ if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
   GLOBAL_BATCH_SIZE="2048"
   VAL_CHECK_INTERVAL="-1"
   SAVE_INTERVAL="${SAVE_INTERVAL:-40}"
-  if [[ -z "${MODEL_PROVENANCE}" ]]; then
-    echo "MODEL_PROVENANCE is required for PIRL_OFFICIAL_PROTOCOL=1" >&2
+  if [[ -z "${MODEL_DIR}" || ! -d "${MODEL_DIR}" ]]; then
+    echo "MODEL_DIR must be an explicit existing directory for PIRL_OFFICIAL_PROTOCOL=1" >&2
     exit 1
   fi
-  if [[ ! "${MODEL_PROVENANCE}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-    echo "MODEL_PROVENANCE must be sha256:<64 lowercase hex characters>" >&2
+  if [[ -n "${EXTRA_OVERRIDES:-}" ]]; then
+    echo "EXTRA_OVERRIDES is forbidden for PIRL_OFFICIAL_PROTOCOL=1; use method-specific variables" >&2
     exit 1
   fi
 fi
@@ -112,6 +112,7 @@ CALVIN_MODEL_DIR="${CALVIN_MODEL_DIR:-/path/to/RLinf-Pi0-CALVIN-ABC-D-SFT}"
 
 MANIFEST="${EXP_ROOT}/run_manifest.csv"
 PIRL_PROTOCOL_TOOL="${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_protocol.py"
+PIRL_REPRO_TOOL="${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_repro_bundle.py"
 
 mkdir -p "${EXP_ROOT}"
 
@@ -159,25 +160,25 @@ model_dir_for_suite() {
 method_overrides() {
   case "$1" in
     flow_noise_baseline)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=none"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=none"
       ;;
     scoreflow_original)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=learned_alpha ++actor.model.openpi.score_flow_scale=1.0 ++actor.model.openpi.score_flow_clip_norm=10.0 ++actor.model.openpi.score_flow_alpha_hidden_dim=16 ++actor.model.openpi.score_flow_alpha_init_bias=-2.0 ++actor.model.openpi.score_flow_alpha_max=2.0 ++actor.model.openpi.score_flow_use_time_mask=true ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=none"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true ++actor.model.openpi.score_flow_mode=learned_alpha ++actor.model.openpi.score_flow_scale=1.0 ++actor.model.openpi.score_flow_clip_norm=10.0 ++actor.model.openpi.score_flow_alpha_hidden_dim=16 ++actor.model.openpi.score_flow_alpha_init_bias=-2.0 ++actor.model.openpi.score_flow_alpha_max=2.0 ++actor.model.openpi.score_flow_use_time_mask=true ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=none"
       ;;
     tr_scalar_l2)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=scalar_l2 ++actor.model.openpi.tr_penalty_beta=1.0 ++actor.model.openpi.cr_reflow_mode=none"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=scalar_l2 ++actor.model.openpi.tr_penalty_beta=1.0 ++actor.model.openpi.cr_reflow_mode=none"
       ;;
     tr_pullback)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=terminal_pullback ++actor.model.openpi.tr_penalty_beta=1.0 ++actor.model.openpi.cr_reflow_mode=none"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=terminal_pullback ++actor.model.openpi.tr_penalty_beta=1.0 ++actor.model.openpi.cr_reflow_mode=none"
       ;;
     tr_pullback_matched)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=terminal_pullback ++actor.model.openpi.tr_penalty_beta=0.03 ++actor.model.openpi.cr_reflow_mode=none"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=terminal_pullback ++actor.model.openpi.tr_penalty_beta=0.03 ++actor.model.openpi.cr_reflow_mode=none"
       ;;
     cr_reflow_no_anchor)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow_no_anchor ++actor.model.openpi.cr_reflow_kl_epsilon=${CR_REFLOW_KL_EPSILON} ++actor.model.openpi.cr_reflow_eta_min=${CR_REFLOW_ETA_MIN} ++actor.model.openpi.cr_reflow_eta_max=${CR_REFLOW_ETA_MAX} ++actor.model.openpi.cr_reflow_weight_clip=${CR_REFLOW_WEIGHT_CLIP} ++actor.model.openpi.cr_reflow_anchor_beta=0.0"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow_no_anchor ++actor.model.openpi.cr_reflow_kl_epsilon=${CR_REFLOW_KL_EPSILON} ++actor.model.openpi.cr_reflow_eta_min=${CR_REFLOW_ETA_MIN} ++actor.model.openpi.cr_reflow_eta_max=${CR_REFLOW_ETA_MAX} ++actor.model.openpi.cr_reflow_weight_clip=${CR_REFLOW_WEIGHT_CLIP} ++actor.model.openpi.cr_reflow_anchor_beta=0.0"
       ;;
     cr_reflow)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow ++actor.model.openpi.cr_reflow_kl_epsilon=${CR_REFLOW_KL_EPSILON} ++actor.model.openpi.cr_reflow_eta_min=${CR_REFLOW_ETA_MIN} ++actor.model.openpi.cr_reflow_eta_max=${CR_REFLOW_ETA_MAX} ++actor.model.openpi.cr_reflow_weight_clip=${CR_REFLOW_WEIGHT_CLIP} ++actor.model.openpi.cr_reflow_anchor_beta=${CR_REFLOW_ANCHOR_BETA}"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow ++actor.model.openpi.cr_reflow_kl_epsilon=${CR_REFLOW_KL_EPSILON} ++actor.model.openpi.cr_reflow_eta_min=${CR_REFLOW_ETA_MIN} ++actor.model.openpi.cr_reflow_eta_max=${CR_REFLOW_ETA_MAX} ++actor.model.openpi.cr_reflow_weight_clip=${CR_REFLOW_WEIGHT_CLIP} ++actor.model.openpi.cr_reflow_anchor_beta=${CR_REFLOW_ANCHOR_BETA}"
       ;;
     *)
       echo "Unsupported method: $1" >&2
@@ -229,12 +230,14 @@ run_one() {
   local config_name suite_model_dir run_name run_dir run_log start_time end_time exit_code status
   local interaction_steps update_epochs action_replan_horizon denoise_steps scheduler
   local protocol_id protocol_artifact model_provenance
+  local reproducibility_bundle
   config_name="$(config_for_suite "${suite}")"
   suite_model_dir="$(model_dir_for_suite "${suite}")"
   run_name="${suite}_${method}_seed${seed}"
   run_dir="${EXP_ROOT}/${suite}/${run_name}"
   run_log="${run_dir}/run.log"
   protocol_artifact=""
+  reproducibility_bundle="${run_dir}/reproducibility.json"
   model_provenance="${MODEL_PROVENANCE:-unverified:${suite_model_dir}}"
   interaction_steps="0"
   update_epochs="0"
@@ -305,6 +308,9 @@ run_one() {
   for override in ${EXTRA_OVERRIDES}; do
     cmd+=("${override}")
   done
+  if [[ "${PIRL_OFFICIAL_PROTOCOL}" != "1" ]]; then
+    cmd+=("algorithm.entropy_bonus=0.005")
+  fi
   for override in $(method_overrides "${method}"); do
     cmd+=("${override}")
   done
@@ -312,38 +318,24 @@ run_one() {
   printf "%q " "${cmd[@]}" > "${run_dir}/command.txt"
   echo >> "${run_dir}/command.txt"
   if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
-    local scheduler_flag="--no-scheduler"
-    if [[ "${scheduler}" == "true" ]]; then
-      scheduler_flag="--scheduler"
-    fi
     "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" emit-training \
       --output "${protocol_artifact}" \
       --command-file "${run_dir}/command.txt" \
+      --model-path "${suite_model_dir}" \
       --suite "${suite}" \
-      --method "${method}" \
-      --model-provenance "${model_provenance}" \
-      --model-family "pi0.5" \
-      --train-epochs "${MAX_EPOCHS}" \
-      --global-batch-size "${GLOBAL_BATCH_SIZE}" \
-      --parallel-environments "${TRAIN_ENVS}" \
-      --rollout-epochs "${ROLLOUT_EPOCH}" \
-      --actor-lr "5.0e-6" \
-      --critic-lr "1.0e-4" \
-      --reward-discount "0.99" \
-      --gae-lambda "0.95" \
-      --clip-ratio "0.2" \
-      --flow-noise-min-logvar "0.04" \
-      --flow-noise-max-logvar "0.10" \
-      --flow-noise-entropy-bonus "0.005" \
-      --interaction-steps "${interaction_steps}" \
-      --update-epochs "${update_epochs}" \
-      --action-prediction-horizon "10" \
-      --action-replan-horizon "${action_replan_horizon}" \
-      --denoise-steps "${denoise_steps}" \
-      "${scheduler_flag}"
+      --method "${method}"
     "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" validate \
       --kind training \
       --artifact "${protocol_artifact}"
+    model_provenance="$("${PYTHON_BIN}" -c "import json; print(json.load(open('${protocol_artifact}'))['model_provenance'])")"
+    "${PYTHON_BIN}" "${PIRL_REPRO_TOOL}" \
+      --output "${reproducibility_bundle}" \
+      --command-file "${run_dir}/command.txt" \
+      --protocol-artifact "${protocol_artifact}" \
+      --local-root "${SCOREFLOW_ROOT}" \
+      --rlinf-root "${RLINF_ROOT}" \
+      --status "prepared" \
+      --exit-code 0
   fi
 
   if [[ "${PREPARE_ONLY}" == "1" ]]; then
@@ -365,6 +357,16 @@ run_one() {
     status="done"
   else
     status="failed"
+  fi
+  if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
+    "${PYTHON_BIN}" "${PIRL_REPRO_TOOL}" \
+      --output "${reproducibility_bundle}" \
+      --command-file "${run_dir}/command.txt" \
+      --protocol-artifact "${protocol_artifact}" \
+      --local-root "${SCOREFLOW_ROOT}" \
+      --rlinf-root "${RLINF_ROOT}" \
+      --status "${status}" \
+      --exit-code "${exit_code}"
   fi
   printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
     "${suite}" "${config_name}" "${suite_model_dir}" "${model_provenance}" "${protocol_id}" "${protocol_artifact}" "${method}" "${seed}" "${run_name}" "${status}" "${run_dir}" \

@@ -15,6 +15,16 @@ RUNNER = REPO_ROOT / "scripts" / "rlinf_scoreflow" / "run_score_flow_benchmark.s
 
 class PiRLRunnerTest(unittest.TestCase):
     def run_prepare(self, temp_root: Path, **overrides: str) -> subprocess.CompletedProcess[str]:
+        model_dir = temp_root / "model"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (model_dir / "weights.bin").write_bytes(b"pi05-sft")
+        config_dir = temp_root / "rlinf/examples/embodiment/config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        for config_name in (
+            "libero_spatial_ppo_openpi_pi05",
+            "libero_10_ppo_openpi_pi05",
+        ):
+            (config_dir / f"{config_name}.yaml").write_text("{}\n", encoding="utf-8")
         env = {
             **os.environ,
             "RLINF_ROOT": str(temp_root / "rlinf"),
@@ -24,6 +34,7 @@ class PiRLRunnerTest(unittest.TestCase):
             "PREPARE_ONLY": "1",
             "SEEDS": "42",
             "METHODS": "flow_noise_baseline",
+            "MODEL_DIR": str(model_dir),
             **overrides,
         }
         return subprocess.run(
@@ -42,7 +53,6 @@ class PiRLRunnerTest(unittest.TestCase):
                 temp_root,
                 PIRL_OFFICIAL_PROTOCOL="1",
                 SUITES="libero_spatial",
-                MODEL_PROVENANCE=f"sha256:{'a' * 64}",
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -76,7 +86,6 @@ class PiRLRunnerTest(unittest.TestCase):
                 temp_root,
                 PIRL_OFFICIAL_PROTOCOL="1",
                 SUITES="libero_10",
-                MODEL_PROVENANCE=f"sha256:{'a' * 64}",
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -99,7 +108,6 @@ class PiRLRunnerTest(unittest.TestCase):
                 PIRL_OFFICIAL_PROTOCOL="1",
                 SUITES="libero_spatial",
                 METHODS="cr_reflow",
-                MODEL_PROVENANCE=f"sha256:{'a' * 64}",
                 CR_REFLOW_KL_EPSILON="0.02",
                 CR_REFLOW_ETA_MIN="0.005",
                 CR_REFLOW_ETA_MAX="20.0",
@@ -127,13 +135,24 @@ class PiRLRunnerTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_official_trailing_override_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = self.run_prepare(
+                Path(temp_dir),
+                PIRL_OFFICIAL_PROTOCOL="1",
+                SUITES="libero_spatial",
+                EXTRA_OVERRIDES="runner.max_epochs=1",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("EXTRA_OVERRIDES is forbidden", result.stderr)
+
     def test_official_non_libero_suite_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             result = self.run_prepare(
                 Path(temp_dir),
                 PIRL_OFFICIAL_PROTOCOL="1",
                 SUITES="maniskill",
-                MODEL_PROVENANCE=f"sha256:{'a' * 64}",
             )
 
             self.assertNotEqual(result.returncode, 0)

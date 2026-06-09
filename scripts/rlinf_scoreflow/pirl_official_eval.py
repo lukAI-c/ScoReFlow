@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 from collections import Counter
@@ -12,17 +11,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .pirl_protocol import load_protocol, validate_evaluation_artifact
+    from .pirl_protocol import load_protocol, sha256_file, validate_evaluation_artifact
 except ImportError:
-    from pirl_protocol import load_protocol, validate_evaluation_artifact
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    from pirl_protocol import load_protocol, sha256_file, validate_evaluation_artifact
 
 
 def wilson_interval(successes: int, total: int, z: float = 1.959963984540054) -> list[float]:
@@ -68,6 +59,10 @@ def read_checkpoint_receipt(
     expected_sha256 = expected_provenance.removeprefix("sha256:")
     if receipt.get("checkpoint_sha256") != expected_sha256:
         raise ValueError("checkpoint load receipt SHA-256 does not match provenance")
+    if not Path(checkpoint_path).is_file():
+        raise ValueError("checkpoint load receipt path does not exist")
+    if sha256_file(Path(checkpoint_path)) != expected_sha256:
+        raise ValueError("checkpoint file SHA-256 does not match provenance")
     if not isinstance(receipt.get("state_dict_keys"), int) or receipt["state_dict_keys"] <= 0:
         raise ValueError("checkpoint load receipt must contain a positive state_dict_keys")
     return receipt
@@ -140,6 +135,12 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "command_sha256": sha256_file(args.command_file),
         "raw_episode_artifact": str(args.raw_episodes),
         "raw_episode_sha256": sha256_file(args.raw_episodes),
+        "training_artifact": str(args.training_artifact.resolve()),
+        "training_artifact_sha256": sha256_file(args.training_artifact),
+        "terminal_status_file": str(args.terminal_status.resolve()),
+        "terminal_status_sha256": sha256_file(args.terminal_status),
+        "reproducibility_bundle": str(args.reproducibility_bundle.resolve()),
+        "reproducibility_bundle_sha256": sha256_file(args.reproducibility_bundle),
         "task_results": task_results,
     }
     result = validate_evaluation_artifact(artifact, protocol)
@@ -156,6 +157,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--raw-episodes", type=Path, required=True)
     parser.add_argument("--command-file", type=Path, required=True)
     parser.add_argument("--checkpoint-receipt", type=Path, required=True)
+    parser.add_argument("--training-artifact", type=Path, required=True)
+    parser.add_argument("--terminal-status", type=Path, required=True)
+    parser.add_argument("--reproducibility-bundle", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--suite", required=True)
     parser.add_argument("--method", required=True)

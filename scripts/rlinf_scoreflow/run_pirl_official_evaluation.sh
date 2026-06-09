@@ -7,14 +7,15 @@ PYTHON_BIN="${PYTHON_BIN:-${RLINF_ROOT}/.venv/bin/python}"
 MODEL_DIR="${MODEL_DIR:-}"
 RL_CHECKPOINT_DIR="${RL_CHECKPOINT_DIR:-}"
 CHECKPOINT_PROVENANCE="${CHECKPOINT_PROVENANCE:-}"
+TRAINING_ARTIFACT="${TRAINING_ARTIFACT:-}"
 SUITE="${SUITE:-libero_spatial}"
 METHOD="${METHOD:-flow_noise_baseline}"
 EXP_ROOT="${EXP_ROOT:-${RLINF_ROOT}/logs/pirl_official_evaluation}"
 PATCH_RLINF="${PATCH_RLINF:-1}"
 PREPARE_ONLY="${PREPARE_ONLY:-0}"
 
-if [[ -z "${MODEL_DIR}" ]]; then
-  echo "MODEL_DIR is required" >&2
+if [[ -z "${MODEL_DIR}" || ! -d "${MODEL_DIR}" ]]; then
+  echo "MODEL_DIR must be an existing directory" >&2
   exit 1
 fi
 if [[ -z "${RL_CHECKPOINT_DIR}" ]]; then
@@ -25,11 +26,23 @@ if [[ ! "${CHECKPOINT_PROVENANCE}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "CHECKPOINT_PROVENANCE must be sha256:<64 lowercase hex characters>" >&2
   exit 1
 fi
+if [[ -z "${TRAINING_ARTIFACT}" || ! -f "${TRAINING_ARTIFACT}" ]]; then
+  echo "TRAINING_ARTIFACT must reference an existing compliant training artifact" >&2
+  exit 1
+fi
 checkpoint_weights="${RL_CHECKPOINT_DIR}/actor/model_state_dict/full_weights.pt"
 if [[ ! -f "${checkpoint_weights}" ]]; then
   echo "RL checkpoint weights not found: ${checkpoint_weights}" >&2
   exit 1
 fi
+actual_checkpoint_provenance="$("${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_protocol.py" digest-file --path "${checkpoint_weights}")"
+if [[ "${actual_checkpoint_provenance}" != "${CHECKPOINT_PROVENANCE}" ]]; then
+  echo "CHECKPOINT_PROVENANCE does not match RL checkpoint weights" >&2
+  exit 1
+fi
+"${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_protocol.py" validate \
+  --kind training \
+  --artifact "${TRAINING_ARTIFACT}"
 
 config_for_suite() {
   case "$1" in
@@ -80,6 +93,8 @@ command_file="${run_dir}/command.txt"
 artifact="${run_dir}/evaluation_artifact.json"
 checkpoint_receipt="${run_dir}/checkpoint_load_receipt.json"
 run_log="${run_dir}/run.log"
+terminal_status="${run_dir}/terminal_status.json"
+reproducibility_bundle="${run_dir}/reproducibility.json"
 mkdir -p "${run_dir}"
 
 cmd=(
@@ -112,6 +127,14 @@ cmd=(
 printf "%q " "${cmd[@]}" > "${command_file}"
 echo >> "${command_file}"
 if [[ "${PREPARE_ONLY}" == "1" ]]; then
+  "${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_repro_bundle.py" \
+    --output "${reproducibility_bundle}" \
+    --command-file "${command_file}" \
+    --protocol-artifact "${TRAINING_ARTIFACT}" \
+    --local-root "${SCOREFLOW_ROOT}" \
+    --rlinf-root "${RLINF_ROOT}" \
+    --status "prepared" \
+    --exit-code 0
   echo "Prepared ${command_file}"
   exit 0
 fi
@@ -121,14 +144,35 @@ set +e
 exit_code="${PIPESTATUS[0]}"
 set -e
 if [[ "${exit_code}" != "0" ]]; then
+  printf '{"status":"failed","exit_code":%s}\n' "${exit_code}" > "${terminal_status}"
+  "${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_repro_bundle.py" \
+    --output "${reproducibility_bundle}" \
+    --command-file "${command_file}" \
+    --protocol-artifact "${TRAINING_ARTIFACT}" \
+    --local-root "${SCOREFLOW_ROOT}" \
+    --rlinf-root "${RLINF_ROOT}" \
+    --status "failed" \
+    --exit-code "${exit_code}"
   echo "Official evaluation failed with exit code ${exit_code}" >&2
   exit "${exit_code}"
 fi
+printf '{"status":"done","exit_code":0}\n' > "${terminal_status}"
+"${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_repro_bundle.py" \
+  --output "${reproducibility_bundle}" \
+  --command-file "${command_file}" \
+  --protocol-artifact "${TRAINING_ARTIFACT}" \
+  --local-root "${SCOREFLOW_ROOT}" \
+  --rlinf-root "${RLINF_ROOT}" \
+  --status "done" \
+  --exit-code 0
 
 "${PYTHON_BIN}" "${SCOREFLOW_ROOT}/scripts/rlinf_scoreflow/pirl_official_eval.py" \
   --raw-episodes "${raw_episodes}" \
   --command-file "${command_file}" \
   --checkpoint-receipt "${checkpoint_receipt}" \
+  --training-artifact "${TRAINING_ARTIFACT}" \
+  --terminal-status "${terminal_status}" \
+  --reproducibility-bundle "${reproducibility_bundle}" \
   --output "${artifact}" \
   --suite "${SUITE}" \
   --method "${METHOD}" \

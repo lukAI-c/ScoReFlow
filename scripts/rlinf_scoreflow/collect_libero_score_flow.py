@@ -4,9 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from pathlib import Path
 from typing import Any
+
+try:
+    from .pirl_protocol import load_protocol, validate_evaluation_artifact
+except ImportError:
+    from pirl_protocol import load_protocol, validate_evaluation_artifact
 
 
 KNOWN_SUITES = (
@@ -90,6 +96,38 @@ def load_scalars(exp_root: Path) -> pd.DataFrame:
                         "event_path": str(event_path),
                     }
                 )
+    return pd.DataFrame(rows)
+
+
+def load_official_evaluations(exp_root: Path) -> pd.DataFrame:
+    import pandas as pd
+
+    protocol = load_protocol()
+    rows: list[dict[str, Any]] = []
+    for artifact_path in sorted(exp_root.glob("**/evaluation_artifact.json")):
+        try:
+            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+            result = validate_evaluation_artifact(artifact, protocol)
+            rows.append(
+                {
+                    "suite": artifact.get("suite"),
+                    "method": artifact.get("method"),
+                    "successes": artifact.get("successes"),
+                    "total_states": artifact.get("total_states"),
+                    "success_percent": artifact.get("success_percent"),
+                    "artifact_path": str(artifact_path),
+                    "official_comparison_eligible": result.compliant,
+                    "validation_errors": "; ".join(result.errors),
+                }
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            rows.append(
+                {
+                    "artifact_path": str(artifact_path),
+                    "official_comparison_eligible": False,
+                    "validation_errors": str(exc),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -303,6 +341,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(args.exp_root)
     scalars = load_scalars(args.exp_root)
+    official_evaluations = load_official_evaluations(args.exp_root)
     summary = summarize(
         manifest,
         scalars,
@@ -314,6 +353,10 @@ def main() -> None:
     manifest.to_csv(args.output_dir / "scoreflow_benchmark_manifest.csv", index=False)
     scalars.to_csv(args.output_dir / "scoreflow_benchmark_raw_scalars.csv", index=False)
     summary.to_csv(args.output_dir / "scoreflow_benchmark_summary.csv", index=False)
+    official_evaluations.to_csv(
+        args.output_dir / "pirl_official_evaluations.csv",
+        index=False,
+    )
 
 
 if __name__ == "__main__":

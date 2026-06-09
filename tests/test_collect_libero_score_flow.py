@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import tempfile
 import unittest
 
 import pandas as pd
 
-from scripts.rlinf_scoreflow.collect_libero_score_flow import summarize
+from scripts.rlinf_scoreflow.collect_libero_score_flow import (
+    load_official_evaluations,
+    summarize,
+)
 
 
 def scalar_row(
@@ -154,6 +160,29 @@ class CollectorStatusTest(unittest.TestCase):
 
         self.assertEqual(summary.loc[0, "evidence_type"], "training_tensorboard_scalar")
         self.assertFalse(summary.loc[0, "official_comparison_eligible"])
+
+    def test_official_collector_independently_rejects_invalid_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact = Path(temp_dir) / "run/evaluation_artifact.json"
+            artifact.parent.mkdir()
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "protocol_id": "pirl_pi05_libero_arxiv_2510.25889v3",
+                        "suite": "libero_spatial",
+                        "method": "flow_noise_baseline",
+                        "status": "done",
+                        "total_states": 500,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            frame = load_official_evaluations(Path(temp_dir))
+
+            self.assertEqual(len(frame), 1)
+            self.assertFalse(frame.loc[0, "official_comparison_eligible"])
+            self.assertTrue(frame.loc[0, "validation_errors"])
 
 
 if __name__ == "__main__":

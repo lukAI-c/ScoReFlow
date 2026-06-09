@@ -2,6 +2,11 @@
   "protocol_id": "pirl_pi05_libero_arxiv_2510.25889v3",
   "source": "arXiv:2510.25889v3 Table 3 and Table 11",
   "model_family": "pi0.5",
+  "approved_model": {
+    "id": "RLinf/RLinf-Pi05-LIBERO-SFT",
+    "config_name": "pi05_libero",
+    "identity_rule": "verified deterministic local tree SHA-256"
+  },
   "train_epochs": 500,
   "global_batch_size": 2048,
   "parallel_environments": 64,
@@ -21,6 +26,7 @@
   },
   "suites": {
     "libero_spatial": {
+      "config_name": "libero_spatial_ppo_openpi_pi05",
       "interaction_steps": 240,
       "update_epochs": 1,
       "action_prediction_horizon": 10,
@@ -30,6 +36,7 @@
       "published_flow_noise_success_percent": 99.6
     },
     "libero_object": {
+      "config_name": "libero_object_ppo_openpi_pi05",
       "interaction_steps": 320,
       "update_epochs": 1,
       "action_prediction_horizon": 10,
@@ -39,6 +46,7 @@
       "published_flow_noise_success_percent": 100.0
     },
     "libero_goal": {
+      "config_name": "libero_goal_ppo_openpi_pi05",
       "interaction_steps": 320,
       "update_epochs": 3,
       "action_prediction_horizon": 10,
@@ -48,6 +56,7 @@
       "published_flow_noise_success_percent": 99.6
     },
     "libero_10": {
+      "config_name": "libero_10_ppo_openpi_pi05",
       "interaction_steps": 480,
       "update_epochs": 4,
       "action_prediction_horizon": 10,

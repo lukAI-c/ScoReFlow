@@ -80,7 +80,8 @@ Primary upstream config references:
 `PIRL_OFFICIAL_PROTOCOL=1` in
 `scripts/rlinf_scoreflow/run_score_flow_benchmark.sh`:
 
-- rejects non-LIBERO suites and non-immutable model provenance;
+- rejects non-LIBERO suites, missing model directories, and all trailing
+  `EXTRA_OVERRIDES` that could replace locked protocol values;
 - applies the published pi0.5 settings, including suite-specific replan and
   denoise values;
 - writes denoise steps through RLinf's live `actor.model.num_steps` key and
@@ -92,16 +93,23 @@ Primary upstream config references:
   as explicit optimization variables while keeping the matched protocol
   fields locked;
 - records the exact generated command and its SHA-256;
+- derives model provenance from a deterministic SHA-256 of the actual model
+  tree rather than trusting a caller-supplied label;
 - emits and validates a machine-readable training protocol artifact before
-  launch.
+  launch, and records command, the referenced RLinf base config and its hash,
+  code revisions, environment, status, and exit code in a reproducibility
+  bundle.
 
 `scripts/rlinf_scoreflow/pirl_protocol.py` rejects:
 
 - the previous reduced training budget;
-- missing or mutable checkpoint provenance;
+- duplicate or replaced locked command overrides;
+- missing, tampered, or caller-asserted model/checkpoint provenance;
 - evaluation artifacts that do not contain exactly ten unique tasks, 50
   evaluated states per task, 500 total states, raw episode evidence, and
-  internally consistent success counts.
+  internally consistent success counts;
+- missing, tampered, malformed, or unhashed command, receipt, raw episode,
+  terminal-status, training-artifact, and reproducibility evidence.
 
 `scripts/rlinf_scoreflow/run_pirl_official_evaluation.sh` runs the standalone
 evaluation entry point with the suite-specific interaction, replan, and
@@ -115,7 +123,9 @@ initialization. The patched rollout worker writes a load receipt only after
 strict `load_state_dict` succeeds; the receipt includes the actual loaded
 path, state-dict key count, and SHA-256. `pirl_official_eval.py` rejects a
 missing or mismatched receipt, duplicate or incomplete states, and writes
-aggregate and per-task success with Wilson intervals.
+aggregate and per-task success with Wilson intervals. The independent
+collector revalidates every official evaluation artifact and all referenced
+hashes before including it in the official comparison table.
 
 ## Live Inspire Audit State
 
