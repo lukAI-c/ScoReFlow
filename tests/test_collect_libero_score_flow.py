@@ -7,13 +7,18 @@ import pandas as pd
 from scripts.rlinf_scoreflow.collect_libero_score_flow import summarize
 
 
-def scalar_row(run_name: str, seed: str, value: float) -> dict[str, object]:
+def scalar_row(
+    run_name: str,
+    seed: str,
+    value: float,
+    tag: str = "eval/success_at_end",
+) -> dict[str, object]:
     return {
         "suite": "libero_spatial",
         "method": "cr_reflow",
         "seed": seed,
         "run_name": run_name,
-        "tag": "eval/success_at_end",
+        "tag": tag,
         "step": 0,
         "value": value,
         "event_path": f"/tmp/{run_name}/events.out.tfevents.test",
@@ -105,6 +110,38 @@ class CollectorStatusTest(unittest.TestCase):
 
         self.assertEqual(evidence, {"42": True, "43": False, "44": False})
         self.assertTrue((summary["num_seeds"] == 1).all())
+        self.assertTrue((summary["final_success_num_seeds"] == 1).all())
+        self.assertFalse(summary["main_table"].any())
+        self.assertTrue((summary["final_success_mean"] == 1.0).all())
+
+    def test_arbitrary_scalars_do_not_inflate_success_completeness(self) -> None:
+        manifest = pd.DataFrame(
+            [
+                manifest_row("libero_spatial_cr_reflow_seed42", "42", "done"),
+                manifest_row("libero_spatial_cr_reflow_seed43", "43", "done"),
+                manifest_row("libero_spatial_cr_reflow_seed44", "44", "done"),
+            ]
+        )
+        scalars = pd.DataFrame(
+            [
+                scalar_row("libero_spatial_cr_reflow_seed42", "42", 1.0),
+                scalar_row("libero_spatial_cr_reflow_seed42", "42", 0.01, "train/actor/approx_kl"),
+                scalar_row("libero_spatial_cr_reflow_seed43", "43", 0.02, "train/actor/approx_kl"),
+                scalar_row("libero_spatial_cr_reflow_seed44", "44", 0.03, "train/actor/approx_kl"),
+            ]
+        )
+
+        summary = summarize(manifest, scalars, 3, 3, 0.25)
+        indexed = summary.set_index("seed")
+
+        self.assertEqual(
+            indexed["final_success_has_evidence"].to_dict(),
+            {"42": True, "43": False, "44": False},
+        )
+        self.assertTrue(indexed["final_approx_kl_has_evidence"].all())
+        self.assertTrue((summary["num_seeds"] == 1).all())
+        self.assertTrue((summary["final_success_num_seeds"] == 1).all())
+        self.assertTrue((summary["final_approx_kl_num_seeds"] == 3).all())
         self.assertFalse(summary["main_table"].any())
         self.assertTrue((summary["final_success_mean"] == 1.0).all())
 

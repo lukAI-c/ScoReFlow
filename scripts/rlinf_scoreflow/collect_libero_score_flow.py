@@ -237,7 +237,9 @@ def summarize(
         }
         for name, (tag, tag_source) in metric_tags.items():
             values = group[group["tag"] == tag].sort_values("step")
-            row[name] = values["value"].iloc[-1] if not values.empty else math.nan
+            value = values["value"].iloc[-1] if not values.empty else math.nan
+            row[name] = value
+            row[f"{name}_has_evidence"] = bool(pd.notna(value))
             row[f"{name}_tag"] = tag
             row[f"{name}_tag_source"] = tag_source
             if name == "final_success":
@@ -256,20 +258,34 @@ def summarize(
     else:
         summary["status"] = "unknown"
     summary["has_scalar_evidence"] = summary["has_scalar_evidence"].eq(True)
+    for metric in metric_tags:
+        evidence_column = f"{metric}_has_evidence"
+        summary[evidence_column] = summary[evidence_column].eq(True)
 
     agg_rows: list[dict[str, Any]] = []
     complete = summary[
         (summary["status"] == "done") & summary["has_scalar_evidence"]
     ]
     for (suite, method), group in complete.groupby(["suite", "method"]):
-        seed_count = group["seed"].astype(str).nunique()
-        row = {"suite": suite, "method": method, "num_seeds": seed_count, "main_table": seed_count >= min_seeds}
+        success_evidence = (
+            group[group["final_success_has_evidence"]]
+            if "final_success_has_evidence" in group
+            else group.iloc[0:0]
+        )
+        success_seed_count = success_evidence["seed"].astype(str).nunique()
+        row = {
+            "suite": suite,
+            "method": method,
+            "num_seeds": success_seed_count,
+            "main_table": success_seed_count >= min_seeds,
+        }
         for metric in metric_tags:
-            if metric in group:
-                row[f"{metric}_mean"] = group[metric].mean()
-                row[f"{metric}_std"] = group[metric].std()
-        if "terminal_collapse" in group:
-            row["terminal_collapse_rate"] = group["terminal_collapse"].mean()
+            metric_group = group[group[f"{metric}_has_evidence"]]
+            row[f"{metric}_num_seeds"] = metric_group["seed"].astype(str).nunique()
+            row[f"{metric}_mean"] = metric_group[metric].mean()
+            row[f"{metric}_std"] = metric_group[metric].std()
+        if "terminal_collapse" in success_evidence:
+            row["terminal_collapse_rate"] = success_evidence["terminal_collapse"].mean()
         agg_rows.append(row)
     aggregate = pd.DataFrame(agg_rows)
     if aggregate.empty:

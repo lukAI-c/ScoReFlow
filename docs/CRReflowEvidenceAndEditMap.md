@@ -602,3 +602,67 @@ significance claim.
 
 After collection, live Inspire status confirmed H100 notebook
 `scoreflow-h100b-0603` was `STOPPED`.
+
+## Round 9 Positive E-Step Weights and Metric-Aware Evidence
+
+Round 9 closes the remaining positive-weight and collection-completeness gaps.
+The exact E-step candidate now applies an explicit float32 positive floor after
+maximum clipping and before final normalization. The same floored candidate is
+used for KL, ESS, feasibility, bisection, and return. Local underflow, masking,
+mixed-precision, and seeded feasible-batch regressions verify that valid
+weights are finite and strictly positive, invalid weights remain zero, and
+returned KL remains bounded.
+
+The collector preserves `has_scalar_evidence` and additionally records a
+non-null evidence flag and terminal seed count for every selected metric. Each
+metric aggregate uses only rows containing that metric, while `num_seeds` and
+`main_table` use terminal rows with explicit success evidence. The reproduced
+three-done-row case with arbitrary scalars on all rows but success on only seed
+42 now reports:
+
+```text
+final_success_num_seeds: 1
+final_approx_kl_num_seeds: 3
+main_table: false with min_seeds=3
+```
+
+Recollection of the corrected Round 8 comparison required no reruns:
+
+```text
+Comparison EXP_ROOT: $R/RLinf/logs/cr_reflow_round8_final_comparison_20260606
+Collector output: collected_round9_metric_aware
+rows: 12
+non-null success evidence: 12/12
+success seed count: 3 for all four methods
+approx-KL seed count: 3 for all four methods
+main_table: true for all four methods
+preferred weight-KL/eta/ESS/uniform-fallback tags: 6/6 CR rows
+```
+
+The measured comparison values are unchanged: success means are
+`tr_scalar_l2=0.750000`, `cr_reflow_no_anchor=0.708333`,
+`cr_reflow=0.375000`, and `flow_noise_baseline=0.375000`; approximate-KL means
+are `0.020504`, `0.006129`, `0.009759`, and `0.017796`, respectively. These
+remain directional three-seed measurements, not a statistical significance
+claim.
+
+One new real pi0.5 LIBERO Spatial full-CR readiness row verified the deployed
+positive-floor path:
+
+```text
+Readiness EXP_ROOT: $R/RLinf/logs/cr_reflow_round9_positive_weight_readiness_20260609
+status: done
+exit_code: 0
+command.txt / run.log / TensorBoard event files: 1 / 1 / 1
+final_success_has_evidence: true
+final_success: 1.0
+final_cr_reflow_weight_kl: 0.044792
+final_cr_reflow_eta: 2.788033
+final_cr_reflow_weight_ess: 0.897880
+final_cr_reflow_eta_at_bound: 0.0
+final_cr_reflow_uniform_fallback: 0.0
+tag source for weight-KL/eta/ESS/uniform-fallback: preferred
+```
+
+After readiness and collection, live Inspire status confirmed H100 notebook
+`scoreflow-h100b-0603` was `STOPPED`.

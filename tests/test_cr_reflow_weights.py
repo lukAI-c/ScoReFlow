@@ -41,15 +41,21 @@ class DummyPolicy:
 def achieved_kl(weights, mask):
     flat = weights.float()[mask > 0]
     probs = flat / flat.sum()
-    return float((probs * (torch.log(probs.clamp_min(1.0e-12)) + math.log(flat.numel()))).sum())
+    return float((probs * (torch.log(probs) + math.log(flat.numel()))).sum())
 
 
 def exact_candidate(advantages, mask, eta, clip_value):
     valid = mask > 0
     flat_adv = advantages.float()[valid]
     flat_weights = torch.softmax(flat_adv / eta, dim=0) * float(flat_adv.numel())
+    positive_floor = torch.finfo(flat_weights.dtype).tiny
     if clip_value > 0.0:
-        flat_weights = flat_weights.clamp(max=clip_value)
+        flat_weights = flat_weights.clamp(
+            min=positive_floor,
+            max=max(clip_value, positive_floor),
+        )
+    else:
+        flat_weights = flat_weights.clamp_min(positive_floor)
     flat_weights = flat_weights / flat_weights.mean().clamp_min(1.0e-12)
     weights = torch.zeros_like(mask, dtype=torch.float32)
     weights[valid] = flat_weights
@@ -60,6 +66,12 @@ class CRReflowWeightsTest(unittest.TestCase):
     def setUp(self):
         self.advantages = torch.tensor([[-1.0, 0.0, 1.0]])
         self.mask = torch.ones_like(self.advantages)
+
+    def assert_valid_weights(self, weights, mask):
+        valid_weights = weights[mask > 0]
+        self.assertTrue(torch.isfinite(valid_weights).all())
+        self.assertTrue((valid_weights > 0).all())
+        self.assertTrue((weights[mask <= 0] == 0).all())
 
     def test_zero_epsilon_uses_uniform_fallback(self):
         result = DummyPolicy(cr_reflow_kl_epsilon=0.0).weights_from_advantages(
@@ -114,6 +126,7 @@ class CRReflowWeightsTest(unittest.TestCase):
             self.advantages, True, mask
         )
         self.assertEqual(float(weights[0, 1]), 0.0)
+        self.assert_valid_weights(weights, mask)
         self.assertAlmostEqual(float(weights[mask > 0].mean()), 1.0, places=6)
         self.assertAlmostEqual(weight_kl, achieved_kl(weights, mask), places=6)
         self.assertEqual(uniform_fallback, 0.0)
@@ -147,6 +160,7 @@ class CRReflowWeightsTest(unittest.TestCase):
         )
         returned_kl = achieved_kl(weights, mask)
         self.assertEqual(weights.dtype, torch.float32)
+        self.assert_valid_weights(weights, mask)
         self.assertEqual(weight_kl, returned_kl)
         self.assertLessEqual(returned_kl, 0.05)
         self.assertEqual(uniform_fallback, 0.0)
@@ -159,6 +173,7 @@ class CRReflowWeightsTest(unittest.TestCase):
         )
         returned_kl = achieved_kl(weights, mask)
         self.assertEqual(weights.dtype, torch.float32)
+        self.assert_valid_weights(weights, mask)
         self.assertEqual(weight_kl, returned_kl)
         self.assertLessEqual(returned_kl, 0.05)
         self.assertEqual(uniform_fallback, 0.0)
@@ -174,6 +189,7 @@ class CRReflowWeightsTest(unittest.TestCase):
         )
 
         self.assertEqual(uniform_fallback, 0.0)
+        self.assert_valid_weights(weights, mask)
         self.assertFalse(torch.allclose(weights, mask))
         self.assertLessEqual(weight_kl, policy.config.cr_reflow_kl_epsilon)
         torch.testing.assert_close(
@@ -203,6 +219,7 @@ class CRReflowWeightsTest(unittest.TestCase):
             )
             tested += 1
             self.assertEqual(uniform_fallback, 0.0)
+            self.assert_valid_weights(weights, mask)
             self.assertFalse(torch.allclose(weights, mask))
             self.assertLessEqual(weight_kl, policy.config.cr_reflow_kl_epsilon)
             torch.testing.assert_close(
@@ -211,6 +228,18 @@ class CRReflowWeightsTest(unittest.TestCase):
             )
 
         self.assertGreater(tested, 0)
+
+    def test_eta_min_underflow_keeps_all_valid_weights_positive(self):
+        policy = DummyPolicy(cr_reflow_kl_epsilon=10.0, cr_reflow_eta_min=0.01)
+        weights, eta, _, weight_kl, eta_at_bound, uniform_fallback = policy.weights_from_advantages(
+            self.advantages, True, self.mask
+        )
+
+        self.assertEqual(eta, policy.config.cr_reflow_eta_min)
+        self.assertEqual(eta_at_bound, 1.0)
+        self.assertEqual(uniform_fallback, 0.0)
+        self.assert_valid_weights(weights, self.mask)
+        self.assertLessEqual(weight_kl, policy.config.cr_reflow_kl_epsilon)
 
 
 if __name__ == "__main__":
