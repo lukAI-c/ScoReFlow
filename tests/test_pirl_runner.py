@@ -58,11 +58,68 @@ class PiRLRunnerTest(unittest.TestCase):
             )
 
             self.assertIn("runner.max_epochs=500", command)
+            self.assertIn("runner.save_interval=40", command)
             self.assertIn("actor.global_batch_size=2048", command)
             self.assertIn("env.train.total_num_envs=64", command)
-            self.assertIn("actor.model.openpi.num_steps=3", command)
-            self.assertIn("actor.model.openpi.noise_logvar_range=\\[0.04\\,0.10\\]", command)
+            self.assertIn("actor.model.openpi.config_name=pi05_libero", command)
+            self.assertNotIn("actor.model.action_horizon", command)
+            self.assertIn("actor.model.num_steps=3", command)
+            self.assertNotIn("actor.model.openpi.num_steps", command)
+            self.assertIn("++actor.model.openpi.noise_logvar_range=\\[0.04\\,0.10\\]", command)
+            self.assertIn("++actor.optim.lr_scheduler=constant", command)
             self.assertTrue(artifact["training_protocol_compliant"])
+
+    def test_official_long_prepare_uses_existing_cosine_scheduler_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            result = self.run_prepare(
+                temp_root,
+                PIRL_OFFICIAL_PROTOCOL="1",
+                SUITES="libero_10",
+                MODEL_PROVENANCE=f"sha256:{'a' * 64}",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            command = (
+                temp_root
+                / "experiments"
+                / "libero_10"
+                / "libero_10_flow_noise_baseline_seed42"
+                / "command.txt"
+            ).read_text(encoding="utf-8")
+            self.assertIn("actor.optim.total_training_steps=500", command)
+            self.assertIn("actor.optim.lr_scheduler=cosine", command)
+            self.assertNotIn("++actor.optim.lr_scheduler=cosine", command)
+
+    def test_cr_reflow_method_parameters_are_explicitly_tunable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            result = self.run_prepare(
+                temp_root,
+                PIRL_OFFICIAL_PROTOCOL="1",
+                SUITES="libero_spatial",
+                METHODS="cr_reflow",
+                MODEL_PROVENANCE=f"sha256:{'a' * 64}",
+                CR_REFLOW_KL_EPSILON="0.02",
+                CR_REFLOW_ETA_MIN="0.005",
+                CR_REFLOW_ETA_MAX="20.0",
+                CR_REFLOW_WEIGHT_CLIP="5.0",
+                CR_REFLOW_ANCHOR_BETA="0.03",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            command = (
+                temp_root
+                / "experiments"
+                / "libero_spatial"
+                / "libero_spatial_cr_reflow_seed42"
+                / "command.txt"
+            ).read_text(encoding="utf-8")
+            self.assertIn("cr_reflow_kl_epsilon=0.02", command)
+            self.assertIn("cr_reflow_eta_min=0.005", command)
+            self.assertIn("cr_reflow_eta_max=20.0", command)
+            self.assertIn("cr_reflow_weight_clip=5.0", command)
+            self.assertIn("cr_reflow_anchor_beta=0.03", command)
 
     def test_development_non_libero_prepare_remains_supported(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

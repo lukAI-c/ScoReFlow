@@ -83,6 +83,14 @@ Primary upstream config references:
 - rejects non-LIBERO suites and non-immutable model provenance;
 - applies the published pi0.5 settings, including suite-specific replan and
   denoise values;
+- writes denoise steps through RLinf's live `actor.model.num_steps` key and
+  saves resumable checkpoints every 40 steps during the 500-step run;
+- locks the OpenPI dataconfig to `pi05_libero`, whose model config defines the
+  published action prediction horizon of 10, and uses strict-Hydra additions
+  only for fields absent from the upstream suite config;
+- exposes only CR-Reflow-specific KL, eta, weight-clip, and anchor parameters
+  as explicit optimization variables while keeping the matched protocol
+  fields locked;
 - records the exact generated command and its SHA-256;
 - emits and validates a machine-readable training protocol artifact before
   launch.

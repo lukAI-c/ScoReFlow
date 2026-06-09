@@ -17,6 +17,11 @@ PREPARE_ONLY="${PREPARE_ONLY:-0}"
 PATCH_RLINF="${PATCH_RLINF:-1}"
 PIRL_OFFICIAL_PROTOCOL="${PIRL_OFFICIAL_PROTOCOL:-0}"
 MODEL_PROVENANCE="${MODEL_PROVENANCE:-}"
+CR_REFLOW_KL_EPSILON="${CR_REFLOW_KL_EPSILON:-0.05}"
+CR_REFLOW_ETA_MIN="${CR_REFLOW_ETA_MIN:-0.01}"
+CR_REFLOW_ETA_MAX="${CR_REFLOW_ETA_MAX:-10.0}"
+CR_REFLOW_WEIGHT_CLIP="${CR_REFLOW_WEIGHT_CLIP:-10.0}"
+CR_REFLOW_ANCHOR_BETA="${CR_REFLOW_ANCHOR_BETA:-0.1}"
 if [[ "${REAL_CONFIG_PRESET}" == "1" ]]; then
   POLICY_VARIANT="${POLICY_VARIANT:-pi05}"
   SUITES="${SUITES:-libero_spatial}"
@@ -40,6 +45,7 @@ if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
   MICRO_BATCH_SIZE="128"
   GLOBAL_BATCH_SIZE="2048"
   VAL_CHECK_INTERVAL="-1"
+  SAVE_INTERVAL="${SAVE_INTERVAL:-40}"
   if [[ -z "${MODEL_PROVENANCE}" ]]; then
     echo "MODEL_PROVENANCE is required for PIRL_OFFICIAL_PROTOCOL=1" >&2
     exit 1
@@ -168,10 +174,10 @@ method_overrides() {
       echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=terminal_pullback ++actor.model.openpi.tr_penalty_beta=0.03 ++actor.model.openpi.cr_reflow_mode=none"
       ;;
     cr_reflow_no_anchor)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow_no_anchor ++actor.model.openpi.cr_reflow_kl_epsilon=0.05 ++actor.model.openpi.cr_reflow_eta_min=0.01 ++actor.model.openpi.cr_reflow_eta_max=10.0 ++actor.model.openpi.cr_reflow_weight_clip=10.0 ++actor.model.openpi.cr_reflow_anchor_beta=0.0"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow_no_anchor ++actor.model.openpi.cr_reflow_kl_epsilon=${CR_REFLOW_KL_EPSILON} ++actor.model.openpi.cr_reflow_eta_min=${CR_REFLOW_ETA_MIN} ++actor.model.openpi.cr_reflow_eta_max=${CR_REFLOW_ETA_MAX} ++actor.model.openpi.cr_reflow_weight_clip=${CR_REFLOW_WEIGHT_CLIP} ++actor.model.openpi.cr_reflow_anchor_beta=0.0"
       ;;
     cr_reflow)
-      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow ++actor.model.openpi.cr_reflow_kl_epsilon=0.05 ++actor.model.openpi.cr_reflow_eta_min=0.01 ++actor.model.openpi.cr_reflow_eta_max=10.0 ++actor.model.openpi.cr_reflow_weight_clip=10.0 ++actor.model.openpi.cr_reflow_anchor_beta=0.1"
+      echo "actor.model.openpi.noise_method=flow_noise ++actor.model.openpi.joint_logprob=true algorithm.entropy_bonus=0.005 ++actor.model.openpi.score_flow_mode=none ++actor.model.openpi.score_flow_scale=0.0 ++actor.model.openpi.tr_penalty_mode=none ++actor.model.openpi.cr_reflow_mode=cr_reflow ++actor.model.openpi.cr_reflow_kl_epsilon=${CR_REFLOW_KL_EPSILON} ++actor.model.openpi.cr_reflow_eta_min=${CR_REFLOW_ETA_MIN} ++actor.model.openpi.cr_reflow_eta_max=${CR_REFLOW_ETA_MAX} ++actor.model.openpi.cr_reflow_weight_clip=${CR_REFLOW_WEIGHT_CLIP} ++actor.model.openpi.cr_reflow_anchor_beta=${CR_REFLOW_ANCHOR_BETA}"
       ;;
     *)
       echo "Unsupported method: $1" >&2
@@ -283,16 +289,16 @@ run_one() {
       "env.eval.max_steps_per_rollout_epoch=${interaction_steps}"
       "actor.optim.lr=5.0e-6"
       "actor.optim.value_lr=1.0e-4"
-      "actor.model.action_horizon=10"
+      "actor.model.openpi.config_name=pi05_libero"
       "actor.model.num_action_chunks=${action_replan_horizon}"
-      "actor.model.openpi.num_steps=${denoise_steps}"
-      "actor.model.openpi.noise_logvar_range=[0.04,0.10]"
+      "actor.model.num_steps=${denoise_steps}"
+      "++actor.model.openpi.noise_logvar_range=[0.04,0.10]"
       "algorithm.entropy_bonus=0.005"
     )
     if [[ "${scheduler}" == "true" ]]; then
       cmd+=("actor.optim.total_training_steps=500" "actor.optim.lr_scheduler=cosine")
     else
-      cmd+=("actor.optim.lr_scheduler=constant")
+      cmd+=("++actor.optim.lr_scheduler=constant")
     fi
   fi
 
