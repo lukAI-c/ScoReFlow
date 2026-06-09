@@ -2054,13 +2054,9 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             probs = torch.softmax(flat_adv / eta, dim=0)
             flat_weights = probs * float(num_weights)
             positive_floor = torch.finfo(flat_weights.dtype).tiny
+            flat_weights = flat_weights.clamp_min(positive_floor)
             if clip_value > 0.0:
-                flat_weights = flat_weights.clamp(
-                    min=positive_floor,
-                    max=max(clip_value, positive_floor),
-                )
-            else:
-                flat_weights = flat_weights.clamp_min(positive_floor)
+                flat_weights = flat_weights.clamp_max(max(clip_value, positive_floor))
             flat_weights = flat_weights / flat_weights.mean().clamp_min(1.0e-12)
             final_probs = flat_weights / flat_weights.sum().clamp_min(1.0e-12)
             weight_kl = (

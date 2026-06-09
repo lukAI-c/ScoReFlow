@@ -49,13 +49,9 @@ def exact_candidate(advantages, mask, eta, clip_value):
     flat_adv = advantages.float()[valid]
     flat_weights = torch.softmax(flat_adv / eta, dim=0) * float(flat_adv.numel())
     positive_floor = torch.finfo(flat_weights.dtype).tiny
+    flat_weights = flat_weights.clamp_min(positive_floor)
     if clip_value > 0.0:
-        flat_weights = flat_weights.clamp(
-            min=positive_floor,
-            max=max(clip_value, positive_floor),
-        )
-    else:
-        flat_weights = flat_weights.clamp_min(positive_floor)
+        flat_weights = flat_weights.clamp_max(max(clip_value, positive_floor))
     flat_weights = flat_weights / flat_weights.mean().clamp_min(1.0e-12)
     weights = torch.zeros_like(mask, dtype=torch.float32)
     weights[valid] = flat_weights
