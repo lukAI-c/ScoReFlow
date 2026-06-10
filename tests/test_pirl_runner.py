@@ -129,6 +129,47 @@ class PiRLRunnerTest(unittest.TestCase):
             self.assertIn("cr_reflow_weight_clip=5.0", command)
             self.assertIn("cr_reflow_anchor_beta=0.03", command)
 
+    def test_screening_budget_is_explicitly_ineligible_for_official_comparison(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            result = self.run_prepare(
+                temp_root,
+                PIRL_OFFICIAL_PROTOCOL="1",
+                PIRL_SCREENING_MAX_EPOCHS="20",
+                SUITES="libero_spatial",
+                METHODS="cr_reflow",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            run_dir = (
+                temp_root
+                / "experiments"
+                / "libero_spatial"
+                / "libero_spatial_cr_reflow_seed42"
+            )
+            command = (run_dir / "command.txt").read_text(encoding="utf-8")
+            artifact = json.loads(
+                (run_dir / "training_protocol.json").read_text(encoding="utf-8")
+            )
+
+            self.assertIn("runner.max_epochs=20", command)
+            self.assertTrue(artifact["screening_only"])
+            self.assertEqual(artifact["screening_budget_epochs"], 20)
+            self.assertFalse(artifact["training_protocol_compliant"])
+            self.assertFalse(artifact["official_comparison_eligible"])
+
+    def test_invalid_screening_budget_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = self.run_prepare(
+                Path(temp_dir),
+                PIRL_OFFICIAL_PROTOCOL="1",
+                PIRL_SCREENING_MAX_EPOCHS="500",
+                SUITES="libero_spatial",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must be an integer in [1, 499]", result.stderr)
+
     def test_development_non_libero_prepare_remains_supported(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             result = self.run_prepare(Path(temp_dir), SUITES="maniskill")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 import tempfile
@@ -14,6 +15,7 @@ from scripts.rlinf_scoreflow.pirl_protocol import (
     sha256_tree,
     validate_evaluation_artifact,
     validate_training_artifact,
+    write_training_artifact,
 )
 
 
@@ -111,6 +113,36 @@ class PiRLProtocolTest(unittest.TestCase):
 
             self.assertFalse(result.compliant)
             self.assertTrue(any("training.train_epochs" in error for error in result.errors))
+
+    def test_direct_screening_emitter_rejects_full_budget(self) -> None:
+        with self.assertRaisesRegex(SystemExit, r"must be in \[1, 499\]"):
+            write_training_artifact(
+                argparse.Namespace(
+                    protocol=Path(__file__).parents[1]
+                    / "scripts/rlinf_scoreflow/protocols/pirl_pi05_libero.json",
+                    screening_max_epochs=500,
+                )
+            )
+
+    def test_screening_emitter_requires_command_budget_to_match_label(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            artifact = self.make_training_artifact(root)
+            output = root / "screening.json"
+
+            with self.assertRaises(SystemExit):
+                write_training_artifact(
+                    argparse.Namespace(
+                        protocol=Path(__file__).parents[1]
+                        / "scripts/rlinf_scoreflow/protocols/pirl_pi05_libero.json",
+                        output=output,
+                        command_file=Path(str(artifact["command_file"])),
+                        model_path=Path(str(artifact["model_path"])),
+                        suite="libero_spatial",
+                        method="flow_noise_baseline",
+                        screening_max_epochs=20,
+                    )
+                )
 
     def test_method_label_must_match_final_command(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

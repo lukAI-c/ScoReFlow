@@ -16,6 +16,7 @@ REAL_CONFIG_PRESET="${REAL_CONFIG_PRESET:-0}"
 PREPARE_ONLY="${PREPARE_ONLY:-0}"
 PATCH_RLINF="${PATCH_RLINF:-1}"
 PIRL_OFFICIAL_PROTOCOL="${PIRL_OFFICIAL_PROTOCOL:-0}"
+PIRL_SCREENING_MAX_EPOCHS="${PIRL_SCREENING_MAX_EPOCHS:-}"
 MODEL_PROVENANCE="${MODEL_PROVENANCE:-}"
 CR_REFLOW_KL_EPSILON="${CR_REFLOW_KL_EPSILON:-0.05}"
 CR_REFLOW_ETA_MIN="${CR_REFLOW_ETA_MIN:-0.01}"
@@ -53,6 +54,14 @@ if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
   if [[ -n "${EXTRA_OVERRIDES:-}" ]]; then
     echo "EXTRA_OVERRIDES is forbidden for PIRL_OFFICIAL_PROTOCOL=1; use method-specific variables" >&2
     exit 1
+  fi
+  if [[ -n "${PIRL_SCREENING_MAX_EPOCHS}" ]]; then
+    if [[ ! "${PIRL_SCREENING_MAX_EPOCHS}" =~ ^[0-9]+$ ]] \
+      || (( PIRL_SCREENING_MAX_EPOCHS < 1 || PIRL_SCREENING_MAX_EPOCHS >= 500 )); then
+      echo "PIRL_SCREENING_MAX_EPOCHS must be an integer in [1, 499]" >&2
+      exit 1
+    fi
+    MAX_EPOCHS="${PIRL_SCREENING_MAX_EPOCHS}"
   fi
 fi
 
@@ -318,15 +327,23 @@ run_one() {
   printf "%q " "${cmd[@]}" > "${run_dir}/command.txt"
   echo >> "${run_dir}/command.txt"
   if [[ "${PIRL_OFFICIAL_PROTOCOL}" == "1" ]]; then
-    "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" emit-training \
-      --output "${protocol_artifact}" \
-      --command-file "${run_dir}/command.txt" \
-      --model-path "${suite_model_dir}" \
-      --suite "${suite}" \
+    local emit_training_cmd=(
+      "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" emit-training
+      --output "${protocol_artifact}"
+      --command-file "${run_dir}/command.txt"
+      --model-path "${suite_model_dir}"
+      --suite "${suite}"
       --method "${method}"
-    "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" validate \
-      --kind training \
-      --artifact "${protocol_artifact}"
+    )
+    if [[ -n "${PIRL_SCREENING_MAX_EPOCHS}" ]]; then
+      emit_training_cmd+=(--screening-max-epochs "${PIRL_SCREENING_MAX_EPOCHS}")
+    fi
+    "${emit_training_cmd[@]}"
+    if [[ -z "${PIRL_SCREENING_MAX_EPOCHS}" ]]; then
+      "${PYTHON_BIN}" "${PIRL_PROTOCOL_TOOL}" validate \
+        --kind training \
+        --artifact "${protocol_artifact}"
+    fi
     model_provenance="$("${PYTHON_BIN}" -c "import json; print(json.load(open('${protocol_artifact}'))['model_provenance'])")"
     "${PYTHON_BIN}" "${PIRL_REPRO_TOOL}" \
       --output "${reproducibility_bundle}" \

@@ -323,7 +323,16 @@ def validate_evaluation_artifact(
 
 def write_training_artifact(args: argparse.Namespace) -> None:
     protocol = load_protocol(args.protocol)
+    if args.screening_max_epochs is not None and not (
+        1 <= args.screening_max_epochs < protocol["train_epochs"]
+    ):
+        raise SystemExit(
+            f"screening max epochs must be in [1, {protocol['train_epochs'] - 1}]"
+        )
     model_digest = sha256_tree(args.model_path)
+    training = expected_training_fields(protocol, args.suite)
+    if args.screening_max_epochs is not None:
+        training["train_epochs"] = args.screening_max_epochs
     artifact = {
         "protocol_id": protocol["protocol_id"],
         "suite": args.suite,
@@ -333,14 +342,31 @@ def write_training_artifact(args: argparse.Namespace) -> None:
         "model_provenance": f"sha256:{model_digest}",
         "command_file": str(args.command_file.resolve()),
         "command_sha256": sha256_file(args.command_file),
-        "training": expected_training_fields(protocol, args.suite),
+        "training": training,
+        "screening_only": args.screening_max_epochs is not None,
+        "screening_budget_epochs": args.screening_max_epochs,
         "official_comparison_eligible": False,
     }
     result = validate_training_artifact(artifact, protocol)
     artifact["training_protocol_compliant"] = result.compliant
     artifact["training_protocol_errors"] = list(result.errors)
     args.output.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
-    if not result.compliant:
+    if args.screening_max_epochs is not None:
+        expected_errors = {
+            (
+                "command runner.max_epochs: expected "
+                f"'{protocol['train_epochs']}', got '{args.screening_max_epochs}'"
+            ),
+            (
+                f"training.train_epochs: expected {protocol['train_epochs']}, "
+                f"got {args.screening_max_epochs}"
+            ),
+        }
+        actual_errors = set(result.errors)
+        if actual_errors != expected_errors:
+            mismatch_errors = actual_errors.symmetric_difference(expected_errors)
+            raise SystemExit("; ".join(sorted(mismatch_errors)))
+    elif not result.compliant:
         raise SystemExit("; ".join(result.errors))
 
 
@@ -375,6 +401,7 @@ def parse_args() -> argparse.Namespace:
     emit.add_argument("--model-path", type=Path, required=True)
     emit.add_argument("--suite", required=True)
     emit.add_argument("--method", required=True)
+    emit.add_argument("--screening-max-epochs", type=int)
     emit.set_defaults(func=write_training_artifact)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--protocol", type=Path, default=PROTOCOL_PATH)
