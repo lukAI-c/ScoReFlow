@@ -360,7 +360,7 @@ Key extensions in this repository:
 If you find this work useful, please consider citing:
 
 ```bibtex
-@misc{scoref low2026,
+@misc{scoreflow2026,
   title   = {ScoRe-Flow: Complete Distributional Control via Score-Based Reinforcement Learning for Flow Matching},
   author  = {},
   year    = {2026},
